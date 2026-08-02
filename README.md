@@ -2,7 +2,7 @@
 
 Tab Labels 是一個本機載入的 Manifest V3 Chrome Extension，讓你快速替分頁命名、搜尋已命名分頁，並以使用者明確授權的網址規則自動套用設定。自訂 favicon 目前暫時停用，避免網站相容性問題。
 
-Phase 2 開發版版本號是 `0.2.0`。本輪不建立正式 `v0.2.0` tag、Release 或 Chrome Web Store 發布；目前 GitHub 最新正式 Release 仍是 [`v0.1.0`](https://github.com/louisa412/Tab-Labels/releases/tag/v0.1.0)。
+目前封板版本是 `0.2.0`。此版本不發布 Chrome Web Store；請使用 GitHub Release 提供的 ZIP 載入未封裝項目。
 
 ## Phase 2 功能
 
@@ -19,6 +19,15 @@ Phase 2 開發版版本號是 `0.2.0`。本輪不建立正式 `v0.2.0` tag、Rel
 
 本輪明確不包含 Project、Workspace、Tab Group、自動保存／重開整組分頁、regex 規則、圖片上傳、雲端同步、帳號、後端、AI 或 Chrome Web Store 發布。
 
+## 安裝 Release 版
+
+1. 從 [Tab Labels 0.2.0 Release](https://github.com/louisa412/Tab-Labels/releases/tag/v0.2.0) 下載 `tab-labels-0.2.0.zip`。
+2. 先解壓縮 ZIP；Chrome 不會直接安裝 ZIP。
+3. 打開 `chrome://extensions`。
+4. 開啟右上角「開發人員模式」。
+5. 點擊「載入未封裝項目」。
+6. 選擇解壓後第一層直接包含 `manifest.json` 的資料夾。
+
 ## 安裝開發版
 
 1. 在 GitHub 取得 branch `feature/phase-2-convenience` 的程式碼，或下載 Draft PR 的 branch。
@@ -28,7 +37,7 @@ Phase 2 開發版版本號是 `0.2.0`。本輪不建立正式 `v0.2.0` tag、Rel
 5. 選擇第一層直接包含 `manifest.json` 的專案資料夾。
 6. 若 Extension 更新檔案，回到 `chrome://extensions` 點擊 Tab Labels 的「重新載入」。
 
-Chrome 不會直接安裝 ZIP；若使用 ZIP，必須先解壓縮，再選取包含 `manifest.json` 的資料夾。
+若使用其他 ZIP，也必須先解壓縮，再選取直接包含 `manifest.json` 的資料夾；不要選取外層包裝資料夾。
 
 ## Popup 使用方式
 
@@ -138,9 +147,9 @@ replace 模式需要明確確認，會取代收藏、規則、排除、隱私與
 
 舊版本的 `originalFavicon` 與 `customFavicon` 可能存在於 session，但安全版本會在讀取時將它們清為 `null`，並將 `injected.favicon` 設為 `false`；不會讀取或修改頁面 favicon link。
 
-關閉 tab 時會清理該筆 session。Chrome 或 Extension 重啟後，session storage 可能清空；它不是跨電腦或永久保存格式。
+關閉 tab 時會清理該筆 session。自訂名稱與目前分頁狀態使用 `chrome.storage.session`；完整關閉 Chrome 或重新開機後，臨時分頁名稱不保證保留。它不是跨電腦或永久保存格式。
 
-長期設定使用 `chrome.storage.local`，key 為 `tabLabelsSettings`，目前 `schemaVersion: 2`，保存：
+收藏、最近名稱設定、自動規則與 Options 設定使用 `chrome.storage.local`；完整關閉 Chrome 或重新開機後仍保留。key 為 `tabLabelsSettings`，目前 `schemaVersion: 2`，保存：
 
 - `recentNames`
 - `favorites`
