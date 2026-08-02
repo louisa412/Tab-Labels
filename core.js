@@ -141,8 +141,200 @@
   }
 
   function faviconDataUrl(value) {
-    const svg = faviconSvg(value);
-    return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
+    return faviconPngDataUrl(value);
+  }
+
+  const FAVICON_FONT = {
+    "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+    "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+    "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+    "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+    "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+    "5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+    "6": ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
+    "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+    "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+    "9": ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+    A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+    C: ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+    D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+    E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+    G: ["01111", "10000", "10000", "10111", "10001", "10001", "01111"],
+    H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+    I: ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+    J: ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
+    K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+    L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+    M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+    O: ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+    P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+    Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
+    R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+    S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+    T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+    U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+    V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+    W: ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+    X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+    Y: ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+    Z: ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+    "?": ["01110", "10001", "00001", "00010", "00100", "00000", "00100"]
+  };
+
+  function byteArrayToBase64(bytes) {
+    if (typeof root.btoa === "function") {
+      let binary = "";
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return root.btoa(binary);
+    }
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(bytes).toString("base64");
+    }
+    return "";
+  }
+
+  function writePngUint32(target, value) {
+    target.push((value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff);
+  }
+
+  function pngCrc32(bytes) {
+    let crc = 0xffffffff;
+    bytes.forEach((byte) => {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+      }
+    });
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function pngAdler32(bytes) {
+    let a = 1;
+    let b = 0;
+    bytes.forEach((byte) => {
+      a = (a + byte) % 65521;
+      b = (b + a) % 65521;
+    });
+    return ((b << 16) | a) >>> 0;
+  }
+
+  function pngChunk(type, data) {
+    const typeBytes = Array.from(type).map((character) => character.charCodeAt(0));
+    const output = [];
+    writePngUint32(output, data.length);
+    output.push(...typeBytes, ...data);
+    writePngUint32(output, pngCrc32(typeBytes.concat(data)));
+    return output;
+  }
+
+  function encodePngRgba(width, height, pixels) {
+    const raw = [];
+    for (let y = 0; y < height; y += 1) {
+      raw.push(0);
+      for (let x = 0; x < width * 4; x += 1) {
+        raw.push(pixels[y * width * 4 + x]);
+      }
+    }
+
+    const compressed = [0x78, 0x01];
+    let offset = 0;
+    while (offset < raw.length) {
+      const length = Math.min(65535, raw.length - offset);
+      const finalBlock = offset + length >= raw.length;
+      compressed.push(finalBlock ? 1 : 0, length & 0xff, (length >>> 8) & 0xff);
+      const inverse = (~length) & 0xffff;
+      compressed.push(inverse & 0xff, (inverse >>> 8) & 0xff);
+      compressed.push(...raw.slice(offset, offset + length));
+      offset += length;
+    }
+    writePngUint32(compressed, pngAdler32(raw));
+
+    const png = [137, 80, 78, 71, 13, 10, 26, 10];
+    png.push(...pngChunk("IHDR", [0, 0, 0, width, 0, 0, 0, height, 8, 6, 0, 0, 0]));
+    png.push(...pngChunk("IDAT", compressed));
+    png.push(...pngChunk("IEND", []));
+    return "data:image/png;base64," + byteArrayToBase64(png);
+  }
+
+  function faviconPngDataUrl(value) {
+    const config = normalizeFaviconConfig(value);
+    if (!config) {
+      return "";
+    }
+
+    const background = config.background.slice(1);
+    const foreground = (config.foreground === "auto"
+      ? contrastForeground(config.background)
+      : config.foreground).slice(1);
+    const backgroundRgb = [0, 2, 4].map((index) => parseInt(background.slice(index, index + 2), 16));
+    const foregroundRgb = [0, 2, 4].map((index) => parseInt(foreground.slice(index, index + 2), 16));
+    const pixels = new Uint8Array(32 * 32 * 4);
+    const insideShape = (x, y) => {
+      if (config.shape === "circle") {
+        const dx = x - 15.5;
+        const dy = y - 15.5;
+        return dx * dx + dy * dy <= 15.5 * 15.5;
+      }
+      if (x < 1 || x > 30 || y < 1 || y > 30) {
+        return false;
+      }
+      const cornerX = x < 8 ? 8 : (x > 23 ? 23 : x);
+      const cornerY = y < 8 ? 8 : (y > 23 ? 23 : y);
+      const dx = x - cornerX;
+      const dy = y - cornerY;
+      return dx * dx + dy * dy <= 49;
+    };
+    const setPixel = (x, y, rgb, alpha) => {
+      if (x < 0 || x >= 32 || y < 0 || y >= 32 || !insideShape(x, y)) {
+        return;
+      }
+      const offset = (y * 32 + x) * 4;
+      pixels[offset] = rgb[0];
+      pixels[offset + 1] = rgb[1];
+      pixels[offset + 2] = rgb[2];
+      pixels[offset + 3] = alpha;
+    };
+
+    for (let y = 0; y < 32; y += 1) {
+      for (let x = 0; x < 32; x += 1) {
+        setPixel(x, y, backgroundRgb, 255);
+      }
+    }
+
+    const characters = Array.from(config.text.toUpperCase());
+    const scale = characters.length === 1 ? 4 : 2;
+    const glyphWidth = 5 * scale;
+    const gap = scale;
+    const totalWidth = characters.length * glyphWidth + (characters.length - 1) * gap;
+    const startX = Math.floor((32 - totalWidth) / 2);
+    const startY = Math.floor((32 - 7 * scale) / 2);
+    characters.forEach((character, characterIndex) => {
+      const glyph = FAVICON_FONT[character] || FAVICON_FONT["?"];
+      glyph.forEach((row, rowIndex) => {
+        Array.from(row).forEach((filled, columnIndex) => {
+          if (filled !== "1") {
+            return;
+          }
+          for (let y = 0; y < scale; y += 1) {
+            for (let x = 0; x < scale; x += 1) {
+              setPixel(
+                startX + characterIndex * (glyphWidth + gap) + columnIndex * scale + x,
+                startY + rowIndex * scale + y,
+                foregroundRgb,
+                255
+              );
+            }
+          }
+        });
+      });
+    });
+
+    return encodePngRgba(32, 32, pixels);
   }
 
   function createDefaultSettings() {
@@ -621,6 +813,7 @@
     createRuleKey,
     exportSettings,
     faviconDataUrl,
+    faviconPngDataUrl,
     faviconSvg,
     hasUnsafeKeys,
     isExcludedUrl,

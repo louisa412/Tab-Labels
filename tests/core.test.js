@@ -154,7 +154,10 @@ test("favicon data generation is local, bounded, and valid for both shapes", () 
   const dataUrl = core.faviconDataUrl(config);
   assert.match(svg, /<svg/);
   assert.match(svg, /<circle/);
-  assert.match(dataUrl, /^data:image\/svg\+xml;charset=utf-8,/);
+  assert.match(dataUrl, /^data:image\/png;base64,/);
+  const png = Buffer.from(dataUrl.split(",")[1], "base64");
+  assert.deepEqual(Array.from(png.slice(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(core.faviconPngDataUrl(config), dataUrl);
   assert.equal(core.faviconDataUrl({ text: " " }), "");
 });
 

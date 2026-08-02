@@ -143,12 +143,16 @@ function executeInTab(tabId, func, args) {
 }
 
 function readPageState(expectedTitle, expectedFaviconUrl) {
-  function findIcon() {
+  function isTabFaviconLink(link) {
+    const tokens = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).filter(Boolean);
+    return tokens.includes("icon");
+  }
+
+  function getFaviconLinks() {
     if (!document.head) {
-      return null;
+      return [];
     }
-    return Array.from(document.head.querySelectorAll("link[rel]"))
-      .find((link) => /\bicon\b/i.test(link.rel || "")) || null;
+    return Array.from(document.head.querySelectorAll("link[rel]")).filter(isTabFaviconLink);
   }
 
   function serializeIcon(link) {
@@ -165,8 +169,7 @@ function readPageState(expectedTitle, expectedFaviconUrl) {
 
   const controller = globalThis.__tabLabelsController__;
   const currentTitle = document.title || "";
-  const icon = findIcon();
-  const currentFavicon = serializeIcon(icon);
+  const currentFavicon = getFaviconLinks().map(serializeIcon);
   const isCurrentTitleManaged = controller && controller.active && controller.label === expectedTitle;
   const isCurrentFaviconManaged = controller
     && controller.active
@@ -187,12 +190,25 @@ function readPageState(expectedTitle, expectedFaviconUrl) {
 }
 
 function installTabController(label, originalTitle, originalFavicon, customFaviconUrl) {
-  function findIcon() {
-    if (!document.head) {
-      return null;
-    }
-    return Array.from(document.head.querySelectorAll("link[rel]"))
-      .find((link) => /\bicon\b/i.test(link.rel || "")) || null;
+  function isTabFaviconLink(link) {
+    const tokens = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).filter(Boolean);
+    return tokens.includes("icon");
+  }
+
+  function getAllLinks() {
+    return document.head ? Array.from(document.head.querySelectorAll("link")) : [];
+  }
+
+  function getFaviconLinks() {
+    return getAllLinks().filter(isTabFaviconLink);
+  }
+
+  function getManagedLinks() {
+    return getAllLinks().filter((link) => link.getAttribute("data-tab-labels-managed") === "true");
+  }
+
+  function getDisabledLinks() {
+    return getAllLinks().filter((link) => link.getAttribute("data-tab-labels-disabled") === "true");
   }
 
   function serializeIcon(link) {
@@ -207,13 +223,29 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
     };
   }
 
+  function normalizeSavedIcons(value) {
+    const values = Array.isArray(value) ? value : (value ? [value] : []);
+    return values.map((item) => {
+      const source = item && item.attributes && typeof item.attributes === "object"
+        ? item.attributes
+        : item;
+      if (!source || typeof source !== "object") {
+        return null;
+      }
+      return {
+        href: typeof source.href === "string" ? source.href : "",
+        rel: typeof source.rel === "string" && source.rel ? source.rel : "icon",
+        type: typeof source.type === "string" ? source.type : "",
+        sizes: typeof source.sizes === "string" ? source.sizes : ""
+      };
+    }).filter(Boolean);
+  }
+
   function applyIconState(link, state) {
     if (!link || !state) {
       return;
     }
-    if (state.rel) {
-      link.setAttribute("rel", state.rel);
-    }
+    link.setAttribute("rel", state.rel || "icon");
     if (state.type) {
       link.setAttribute("type", state.type);
     } else {
@@ -231,25 +263,138 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
     }
   }
 
+  function removeManagedMarkers(link) {
+    [
+      "data-tab-labels-managed",
+      "data-tab-labels-injected",
+      "data-tab-labels-disabled",
+      "data-tab-labels-original-rel",
+      "data-tab-labels-original-type",
+      "data-tab-labels-original-sizes",
+      "data-tab-labels-last-href",
+      "data-tab-labels-last-type",
+      "data-tab-labels-last-sizes",
+      "data-tab-labels-original-index"
+    ].forEach((attribute) => link.removeAttribute(attribute));
+  }
+
+  function rememberDisabledLink(link, originalIndex) {
+    if (!link) {
+      return;
+    }
+    if (link.getAttribute("data-tab-labels-disabled") === "true") {
+      const current = serializeIcon(link);
+      link.setAttribute("data-tab-labels-last-href", current.href || "");
+      link.setAttribute("data-tab-labels-last-type", current.type || "");
+      link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
+      link.setAttribute("rel", "tab-labels-disabled");
+      return;
+    }
+    const current = serializeIcon(link);
+    link.setAttribute("data-tab-labels-disabled", "true");
+    link.setAttribute("data-tab-labels-original-rel", current.rel || "icon");
+    link.setAttribute("data-tab-labels-original-type", current.type || "");
+    link.setAttribute("data-tab-labels-original-sizes", current.sizes || "");
+    link.setAttribute("data-tab-labels-last-href", current.href || "");
+    link.setAttribute("data-tab-labels-last-type", current.type || "");
+    link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
+    if (Number.isInteger(originalIndex)) {
+      link.setAttribute("data-tab-labels-original-index", String(originalIndex));
+    }
+    link.setAttribute("rel", "tab-labels-disabled");
+  }
+
+  function updateDisabledSnapshots() {
+    getDisabledLinks().forEach((link) => {
+      const current = serializeIcon(link);
+      if (current.href !== link.getAttribute("data-tab-labels-last-href")) {
+        link.setAttribute("data-tab-labels-last-href", current.href || "");
+      }
+      if (current.type !== link.getAttribute("data-tab-labels-last-type")) {
+        link.setAttribute("data-tab-labels-last-type", current.type || "");
+      }
+      if (current.sizes !== link.getAttribute("data-tab-labels-last-sizes")) {
+        link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
+      }
+    });
+  }
+
+  function restoreDisabledLink(link) {
+    const state = {
+      href: link.getAttribute("data-tab-labels-last-href") || "",
+      rel: link.getAttribute("data-tab-labels-original-rel") || "icon",
+      type: link.getAttribute("data-tab-labels-last-type") || "",
+      sizes: link.getAttribute("data-tab-labels-last-sizes") || ""
+    };
+    applyIconState(link, state);
+    const originalIndex = link.getAttribute("data-tab-labels-original-index");
+    removeManagedMarkers(link);
+    return originalIndex === null ? null : Number(originalIndex);
+  }
+
+  function createRestoredLink(state) {
+    const link = document.createElement("link");
+    applyIconState(link, state);
+    document.head.appendChild(link);
+    return link;
+  }
+
+  function ensureManagedFavicon(controller) {
+    if (!controller.active || !controller.customFaviconUrl || !document.head) {
+      return;
+    }
+
+    updateDisabledSnapshots();
+    getFaviconLinks().filter((link) => link.getAttribute("data-tab-labels-managed") !== "true")
+      .forEach((link) => rememberDisabledLink(
+        link,
+        originalIconIndexes.has(link) ? originalIconIndexes.get(link) : null
+      ));
+
+    let managedLinks = getManagedLinks();
+    let managedLink = managedLinks[0];
+    managedLinks.slice(1).forEach((link) => link.remove());
+    if (!managedLink) {
+      managedLink = document.createElement("link");
+      managedLink.setAttribute("data-tab-labels-injected", "true");
+      document.head.appendChild(managedLink);
+    }
+    managedLink.setAttribute("data-tab-labels-managed", "true");
+    managedLink.setAttribute("rel", "icon");
+    managedLink.setAttribute("type", "image/png");
+    managedLink.setAttribute("sizes", "32x32");
+    if (managedLink.getAttribute("href") !== controller.customFaviconUrl) {
+      managedLink.setAttribute("href", controller.customFaviconUrl);
+    }
+    if (document.head.lastElementChild !== managedLink) {
+      document.head.appendChild(managedLink);
+    }
+  }
+
   const previous = globalThis.__tabLabelsController__;
   if (previous && typeof previous.stop === "function") {
     previous.stop();
   }
 
   const currentTitle = document.title || "";
-  const currentIcon = serializeIcon(findIcon());
+  const currentIcons = getFaviconLinks();
+  const capturedIcons = currentIcons.map(serializeIcon);
+  const originalIconIndexes = new Map(currentIcons.map((link, index) => [link, index]));
+  const savedIcons = normalizeSavedIcons(originalFavicon);
+  const initialOriginalFavicon = savedIcons.length ? savedIcons : capturedIcons;
   const previousTitle = previous && previous.active ? previous.lastWebsiteTitle : "";
   const previousFavicon = previous && previous.active ? previous.lastWebsiteFavicon : null;
   const controller = {
     active: true,
     label: label || "",
     originalTitle: originalTitle || currentTitle,
-    originalFavicon: originalFavicon || previousFavicon || currentIcon,
+    originalFavicon: initialOriginalFavicon,
     customFaviconUrl: customFaviconUrl || "",
     lastWebsiteTitle: previousTitle || (currentTitle !== label ? currentTitle : (originalTitle || "")),
-    lastWebsiteFavicon: previousFavicon || originalFavicon || currentIcon,
+    lastWebsiteFavicon: previousFavicon || initialOriginalFavicon,
     observer: null,
     applying: false,
+    pending: false,
     stop() {
       this.active = false;
       if (this.observer) {
@@ -266,21 +411,26 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
       this.label = "";
     },
     restoreFavicon() {
-      const managedLink = document.querySelector("link[data-tab-labels-managed=\"true\"]");
-      const latestWebsiteFavicon = this.lastWebsiteFavicon || this.originalFavicon;
-      if (managedLink && managedLink.getAttribute("data-tab-labels-injected") === "true") {
-        if (!latestWebsiteFavicon) {
-          managedLink.remove();
-        } else {
-          applyIconState(managedLink, latestWebsiteFavicon);
-          managedLink.removeAttribute("data-tab-labels-managed");
-          managedLink.removeAttribute("data-tab-labels-injected");
-        }
-      } else if (managedLink && latestWebsiteFavicon) {
-        applyIconState(managedLink, latestWebsiteFavicon);
-        managedLink.removeAttribute("data-tab-labels-managed");
+      if (!document.head) {
+        this.customFaviconUrl = "";
+        return;
       }
       this.customFaviconUrl = "";
+      this.applying = true;
+      const restoredIndexes = new Set();
+      getManagedLinks().forEach((link) => link.remove());
+      getDisabledLinks().forEach((link) => {
+        const index = restoreDisabledLink(link);
+        if (index !== null && Number.isInteger(index)) {
+          restoredIndexes.add(index);
+        }
+      });
+      normalizeSavedIcons(this.originalFavicon).forEach((state, index) => {
+        if (!restoredIndexes.has(index)) {
+          createRestoredLink(state);
+        }
+      });
+      this.applying = false;
     }
   };
 
@@ -297,54 +447,30 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
     }
   }
 
-  function applyFavicon() {
-    if (!controller.active || !controller.customFaviconUrl || !document.head) {
+  function applyAll() {
+    if (!controller.active || controller.applying) {
       return;
     }
-    let icon = findIcon();
-    if (!icon) {
-      icon = document.createElement("link");
-      icon.setAttribute("rel", "icon");
-      icon.setAttribute("data-tab-labels-injected", "true");
-      document.head.appendChild(icon);
-    } else {
-      const current = serializeIcon(icon);
-      if (current && current.href && current.href !== controller.customFaviconUrl) {
-        controller.lastWebsiteFavicon = current;
-      }
-    }
-    icon.setAttribute("data-tab-labels-managed", "true");
-    if (icon.getAttribute("href") !== controller.customFaviconUrl) {
-      controller.applying = true;
-      icon.setAttribute("href", controller.customFaviconUrl);
-      controller.applying = false;
-    }
-  }
-
-  function applyAll() {
+    controller.applying = true;
     applyTitle();
-    applyFavicon();
+    ensureManagedFavicon(controller);
+    controller.applying = false;
   }
 
   const observer = new MutationObserver(() => {
-    if (!controller.active) {
+    if (!controller.active || controller.pending) {
       return;
     }
-
-    const pageTitle = document.title || "";
-    if (controller.label && pageTitle && pageTitle !== controller.label) {
-      controller.lastWebsiteTitle = pageTitle;
+    controller.pending = true;
+    const rerun = () => {
+      controller.pending = false;
+      applyAll();
+    };
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(rerun);
+    } else {
+      Promise.resolve().then(rerun);
     }
-
-    if (controller.customFaviconUrl) {
-      const icon = findIcon();
-      const current = serializeIcon(icon);
-      if (current && current.href && current.href !== controller.customFaviconUrl && !controller.applying) {
-        controller.lastWebsiteFavicon = current;
-      }
-    }
-
-    queueMicrotask(applyAll);
   });
   controller.observer = observer;
   globalThis.__tabLabelsController__ = controller;
@@ -361,7 +487,7 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
   applyAll();
   return {
     currentTitle: document.title || "",
-    currentFavicon: serializeIcon(findIcon())
+    currentFavicon: getFaviconLinks().map(serializeIcon)
   };
 }
 
@@ -392,7 +518,9 @@ function disableFaviconInController() {
     delete globalThis.__tabLabelsController__;
   }
   const icon = document.head
-    ? Array.from(document.head.querySelectorAll("link[rel]")).find((link) => /\bicon\b/i.test(link.rel || ""))
+    ? Array.from(document.head.querySelectorAll("link[rel]")).find((link) => (
+      (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).includes("icon")
+    ))
     : null;
   return {
     currentFavicon: icon

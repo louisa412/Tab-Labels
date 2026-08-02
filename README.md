@@ -10,7 +10,7 @@ Phase 2 開發版版本號是 `0.2.0`。本輪不建立正式 `v0.2.0` tag、Rel
 - 收藏名稱：可綁定 favicon，在 Options 頁改名、儲存、刪除與上移／下移。
 - 自動補字：收藏優先於最近使用，支援開頭與包含匹配；`↑`、`↓`、`Enter`、`Escape` 可用鍵盤操作。
 - 名稱安全整理：去除頭尾空白、連續空白縮成一個、`  ｜  ` 正規化成 `｜`，保留使用者大小寫與語言。
-- 本機 favicon 產生器：1–2 個字元、背景色、自動高對比文字色或自訂文字色、圓形或圓角方形。使用 SVG data URL，不上傳圖片、不載入外部字型。
+- 本機 favicon 產生器：1–2 個字元、背景色、自動高對比文字色或自訂文字色、圓形或圓角方形。使用 32×32 PNG data URL，本機產生、不上傳圖片、不載入外部字型。
 - 已命名分頁管理頁：搜尋自訂名稱與 hostname，顯示目前分頁、視窗、favicon；點擊切換、直接恢復原名、確認後關閉分頁。
 - 自動命名規則：exact 完整網址與 prefix 網址前綴。exact 優先；prefix 同時匹配時較長者優先；同等精確度以較晚更新者優先。
 - 單一分頁可暫停自動命名，關閉分頁後隨 session data 消失；也可重新套用規則。
@@ -41,6 +41,8 @@ Chrome 不會直接安裝 ZIP；若使用 ZIP，必須先解壓縮，再選取�
 7. 使用「已命名分頁」開啟搜尋與切換頁；使用「設定與匯入匯出」開啟 Options。
 
 網站動態改寫 `<title>` 或 favicon 相關 `<link rel>` 元素時，Tab Labels 會盡量重新套用自己的設定。它只操作這些元素，不讀取網頁正文、表單、密碼、Cookie 或可編輯內容。
+
+自訂 favicon 會建立一個位於 `<head>` 最後方、標記為 `data-tab-labels-managed="true"` 的 `rel="icon"` PNG link。它會精確辨識含有 `icon` rel token 的 tab favicon（包含 `shortcut icon`），暫時停用其他 tab favicon link，並保留 `apple-touch-icon` 不動；恢復時會還原所有原始 link 與網站在套用期間更新的 href。這是為了避免網站的多個 favicon link 或動態新增 link 覆蓋 Chrome 實際採用的圖示。
 
 ## 已命名分頁與快捷鍵
 
@@ -121,6 +123,8 @@ replace 模式需要明確確認，會取代收藏、規則、排除、隱私與
 - `pageUrl`
 - `autoRulePaused`
 - 注入的 title／favicon 狀態
+
+`originalFavicon` 會保存頁面所有 tab favicon link 的必要狀態；`apple-touch-icon` 不屬於 Chrome tab favicon，不會被移除或改寫。
 
 關閉 tab 時會清理該筆 session。Chrome 或 Extension 重啟後，session storage 可能清空；它不是跨電腦或永久保存格式。
 
@@ -215,9 +219,10 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 
 ```sh
 node --test tests/core.test.js
+node --test tests/reload-regression.test.js tests/favicon-regression.test.js
 ```
 
-測試涵蓋名稱正規化、最近名稱上限與去重、收藏 CRUD 與排序、autocomplete、exact／prefix 規則、規則優先順序、disabled、排除與 tab pause、JSON export/import、merge/replace 模型、惡意 key、schema migration、favicon data 生成與清除資料。
+測試涵蓋名稱正規化、最近名稱上限與去重、收藏 CRUD 與排序、autocomplete、exact／prefix 規則、規則優先順序、disabled、排除與 tab pause、JSON export/import、merge/replace 模型、惡意 key、schema migration、PNG favicon data 生成與清除資料，以及手動／自動分頁 reload 與多 favicon link 的套用、動態改寫、恢復和 observer regression cases。
 
 靜態檢查可使用：
 
