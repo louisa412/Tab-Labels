@@ -8,6 +8,7 @@ const {
   createDefaultSettings,
   createRuleKey,
   faviconDataUrl,
+  getTabLoadAction,
   isExcludedUrl,
   isNamedRecord,
   isProtectedUrl,
@@ -1072,6 +1073,63 @@ async function applyAutomaticRuleToTab(tabId, force = false) {
   }
 }
 
+async function restoreSessionRecordAfterLoad(tab, record) {
+  let next = record;
+  const navigated = Boolean(record.pageUrl && record.pageUrl !== tab.url);
+
+  if (navigated) {
+    try {
+      const pageState = await readTabPageState(tab, record);
+      next = makeRecord(tab, record, pageState, {
+        customTitle: record.customTitle,
+        customFavicon: record.customFavicon,
+        source: record.source,
+        autoRuleId: record.autoRuleId || ""
+      });
+    } catch {
+      // Keep the session record even when activeTab/host access was revoked.
+      next = { ...record, pageUrl: tab.url || "" };
+    }
+  }
+
+  // Save before injection so a page-level failure never deletes a valid manual state.
+  await saveSessionRecord(tab.id, next);
+  try {
+    await installRecord(tab, next);
+    return {
+      ok: true,
+      action: "restore-session",
+      record: next
+    };
+  } catch {
+    return {
+      ok: false,
+      action: "restore-session",
+      preserved: true,
+      message: unsupportedMessage()
+    };
+  }
+}
+
+async function handleTabLoadComplete(tabId) {
+  const tab = await getTab(tabId);
+  if (!tab || !isScriptableUrl(tab.url)) {
+    return { ok: false, skipped: true };
+  }
+
+  const records = await getSessionRecords();
+  const record = records[String(tab.id)] || null;
+  const action = getTabLoadAction(record);
+
+  if (action === "restore-session") {
+    return restoreSessionRecordAfterLoad(tab, record);
+  }
+  if (action === "paused") {
+    return { ok: true, skipped: true, paused: true };
+  }
+  return applyAutomaticRuleToTab(tabId);
+}
+
 async function restoreAutoRule(tabId) {
   const records = await getSessionRecords();
   const record = records[String(tabId)];
@@ -1243,7 +1301,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status !== "complete") {
     return;
   }
-  void applyAutomaticRuleToTab(tabId);
+  void handleTabLoadComplete(tabId);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -1252,7 +1310,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.runtime.onStartup.addListener(() => {
   void chrome.tabs.query({}).then((tabs) => Promise.all(
-    tabs.map((tab) => applyAutomaticRuleToTab(tab.id))
+    tabs.map((tab) => handleTabLoadComplete(tab.id))
   ));
 });
 

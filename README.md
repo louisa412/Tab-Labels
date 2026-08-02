@@ -68,6 +68,15 @@ Chrome 可能因系統或其他 Extension 衝突而不接受預設快捷鍵。�
 - tab 導覽或重新整理完成；
 - Chrome 啟動後目前已存在的分頁被檢查。
 
+頁面完成載入時會先檢查目前 tabId 的 session record，再決定是否評估自動規則：
+
+- 手動 record 只要仍有 custom title 或 custom favicon，就先重新注入既有設定；沒有 matching auto rule 也不會清除或跳過手動狀態。
+- paused auto record 會重新注入目前已存在的 presentation，但不會重新選擇新規則。
+- auto record 才會依目前 URL、排除設定與 permission 重新評估。
+- 沒有 session record 才會從零開始匹配 auto rule。
+
+同一 URL 重新整理一定保留手動名稱與 favicon。tabId 工作階段模型也會保留手動 presentation 跨站內或跨 origin 導覽；若跨 origin 後 activeTab 或 host access 已被撤銷，Extension 會保留 session record，不會因一次注入失敗刪除設定，使用者下次主動開啟 popup 後可重新注入或恢復原名。
+
 Chrome service worker 可能在事件之間重新啟動，因此規則狀態保存在 `chrome.storage.local`，而每次需要注入時仍會重新確認 permission。Chrome 不保證 Extension 能注入所有頁面：`chrome://`、Chrome Web Store、Extension 內部頁面與其他受保護頁面會被跳過。
 
 匯入規則只保存規則，不等於取得權限。Options 會列出需要授權的 origins，使用者可逐項授權或按「授權列出的 origins」主動批次授權。撤銷 permission 後規則不刪除，只標示為需要授權；手動 `activeTab` 改名仍可使用。
@@ -164,6 +173,7 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 - [ ] 讓測試網站自行更新 favicon，確認 Tab Labels 仍維持自訂圖示。
 - [ ] 使用「恢復原名」只恢復標題，再使用「恢復原始 favicon」恢復圖示。
 - [ ] 兩個相同網站分頁設定不同名稱與 favicon，確認 tabId 狀態互不干擾。
+- [ ] 恢復原名後重新整理，確認舊名稱與 favicon 都不會復活。
 
 ### 分頁搜尋
 
@@ -203,15 +213,15 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 
 本機不需要 npm 或 bundler。純邏輯測試：
 
-`sh
+```sh
 node --test tests/core.test.js
-`
+```
 
 測試涵蓋名稱正規化、最近名稱上限與去重、收藏 CRUD 與排序、autocomplete、exact／prefix 規則、規則優先順序、disabled、排除與 tab pause、JSON export/import、merge/replace 模型、惡意 key、schema migration、favicon data 生成與清除資料。
 
 靜態檢查可使用：
 
-`sh
+```sh
 node --check core.js
 node --check popup.js
 node --check service-worker.js
@@ -219,7 +229,7 @@ node --check options.js
 node --check tab-manager.js
 python3 -m json.tool manifest.json >/dev/null
 node tests/static-check.js
-`
+```
 
 另請確認所有 manifest 引用檔案存在、沒有 remote script、沒有 `<all_urls>`、沒有 analytics／telemetry、沒有本機絕對路徑、沒有 secrets、沒有 `.DS_Store`，並執行 `git diff --check`。
 

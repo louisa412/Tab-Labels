@@ -503,6 +503,21 @@
     );
   }
 
+  function getTabLoadAction(record) {
+    if (!record) {
+      return "evaluate-auto";
+    }
+
+    const hasPresentation = Boolean(record.customTitle || record.customFavicon);
+    if (record.autoRulePaused) {
+      return hasPresentation ? "restore-session" : "paused";
+    }
+    if (record.source === "manual" && hasPresentation) {
+      return "restore-session";
+    }
+    return "evaluate-auto";
+  }
+
   function createRuleKey(rule) {
     return `${rule.matchType}:${rule.pattern}`;
   }
@@ -625,6 +640,7 @@
     updateFavorite,
     sanitizeSettings,
     shouldApplyRule,
+    getTabLoadAction,
     validateImportPayload
   };
 
