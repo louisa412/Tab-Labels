@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tab Labels</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="app-header">
+        <span class="app-mark" aria-hidden="true">T</span>
+        <div>
+          <p class="app-kicker">分頁工作標籤</p>
+          <h1>Tab Labels</h1>
+        </div>
+      </header>
+
+      <section class="panel" aria-labelledby="page-title-heading">
+        <div class="section-heading">
+          <p class="section-label" id="page-title-heading">目前分頁原始標題</p>
+          <span class="tab-scope">目前分頁</span>
+        </div>
+        <p class="title-preview" id="original-title" title="">載入中…</p>
+
+        <p class="current-label" id="current-label" aria-live="polite">
+          目前自訂名稱：<span>未設定</span>
+        </p>
+
+        <form id="label-form" novalidate>
+          <label for="label-input">自訂顯示名稱</label>
+          <div class="input-row">
+            <input
+              id="label-input"
+              name="label"
+              type="text"
+              maxlength="80"
+              autocomplete="off"
+              placeholder="例如：Kizamu｜Codex"
+              aria-describedby="input-hint"
+              enterkeyhint="done"
+              autofocus
+            >
+            <button type="button" class="icon-button" id="clear-input" aria-label="清除輸入" title="清除輸入">清除</button>
+          </div>
+          <p class="input-hint" id="input-hint">最多 80 個字元，按 Enter 可儲存。</p>
+
+          <div class="actions">
+            <button type="submit" class="button button-primary" id="save-button">儲存名稱</button>
+            <button type="button" class="button button-secondary" id="restore-button">恢復原名</button>
+          </div>
+        </form>
+
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer class="app-footer">名稱只套用於目前這個分頁</footer>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
