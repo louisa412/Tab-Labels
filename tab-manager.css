@@ -1,0 +1,62 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f7fb;
+  --surface: #fff;
+  --surface-muted: #eef1f7;
+  --text: #182033;
+  --text-muted: #687187;
+  --border: #d8deea;
+  --primary: #4359d8;
+  --primary-soft: #e8ebff;
+  --danger: #a52d3f;
+  --danger-soft: #fff0f2;
+  --success: #176b4a;
+  --success-soft: #e8f7ef;
+  --focus: #7688ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5;
+}
+button, input { font: inherit; }
+button, a { cursor: pointer; }
+.manager-shell { width: min(100% - 32px, 940px); margin: 0 auto; padding: 36px 0 60px; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
+.eyebrow { margin: 0 0 3px; color: var(--text-muted); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+h1 { margin: 0; font-size: 30px; letter-spacing: -.03em; }
+.lede { max-width: 650px; margin: 9px 0 0; color: var(--text-muted); }
+.page-nav { display: flex; align-items: center; gap: 10px; }
+.page-nav a, .page-nav button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); text-decoration: none; font-weight: 700; }
+.page-nav a:hover, .page-nav button:hover { background: var(--surface-muted); }
+.search-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 750; }
+.search-input { width: 100%; min-height: 42px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); }
+.search-input:focus-visible, button:focus-visible, a:focus-visible { border-color: var(--focus); outline: 3px solid rgb(118 136 255 / 28%); outline-offset: 1px; }
+.status { min-height: 20px; margin: 13px 0; color: var(--text-muted); font-weight: 650; }
+.status.success, .status.error { padding: 8px 10px; border-radius: 8px; }
+.status.success { background: var(--success-soft); color: var(--success); }
+.status.error { background: var(--danger-soft); color: var(--danger); }
+.tabs-list { display: grid; gap: 9px; }
+.tab-card { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 5px 18px rgb(35 48 82 / 4%); }
+.tab-card.current { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.tab-icon { width: 32px; height: 32px; object-fit: contain; border-radius: 8px; }
+.tab-icon-fallback { display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); font-size: 12px; font-weight: 800; }
+.tab-main { min-width: 0; cursor: pointer; }
+.tab-title { overflow: hidden; font-size: 15px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.tab-meta { overflow: hidden; margin-top: 3px; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.tab-badge { display: inline-block; margin-left: 6px; padding: 2px 5px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: 10px; font-weight: 800; }
+.tab-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.tab-actions button { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 700; }
+.tab-actions button:hover { background: var(--surface-muted); }
+.tab-actions .danger { border-color: transparent; background: var(--danger-soft); color: var(--danger); }
+.empty-state { padding: 35px 15px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-muted); text-align: center; }
+@media (max-width: 650px) {
+  .manager-shell { width: min(100% - 22px, 940px); padding-top: 22px; }
+  .page-header { display: block; }
+  .page-nav { margin-top: 12px; }
+  .tab-card { grid-template-columns: 34px minmax(0, 1fr); }
+  .tab-actions { grid-column: 2; justify-content: flex-start; }
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151821; --surface: #202430; --surface-muted: #2a2f3d; --text: #f2f4fb; --text-muted: #aab2c5; --border: #3b4254; --primary: #a1adff; --primary-soft: #2d3569; --danger: #ff9eaa; --danger-soft: #482832; --success: #8be0b7; --success-soft: #1f4033; --focus: #aab5ff; }
+}

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tab Labels 設定</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Tab Labels</p>
+          <h1>設定與資料管理</h1>
+          <p class="lede">所有長期設定只保存在這台 Chrome 的 chrome.storage.local。跨電腦移轉請使用 JSON 匯出與匯入。</p>
+        </div>
+        <a class="back-link" href="tab-manager.html">已命名分頁</a>
+      </header>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <section class="settings-card" aria-labelledby="summary-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">隱私</p>
+            <h2 id="summary-heading">已儲存資料摘要</h2>
+          </div>
+          <span id="version" class="badge"></span>
+        </div>
+        <div id="summary" class="summary-grid"></div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="favorites-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">快速命名</p>
+            <h2 id="favorites-heading">收藏名稱</h2>
+          </div>
+          <span class="muted">順序不會因最近使用而改變</span>
+        </div>
+        <div id="favorites-list" class="stack-list"></div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="rules-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">自動化</p>
+            <h2 id="rules-heading">自動命名規則</h2>
+          </div>
+          <button type="button" class="button button-secondary" id="grant-all">授權列出的 origins</button>
+        </div>
+        <p class="section-note">exact 只匹配完整網址；prefix 只匹配你建立時顯示的網址前綴。規則不會因匯入而自動取得權限。</p>
+        <div id="rules-list" class="stack-list"></div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="import-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">匯出與匯入</p>
+            <h2 id="import-heading">JSON 匯出與匯入</h2>
+          </div>
+        </div>
+        <div class="inline-controls">
+          <label class="check-row"><input type="checkbox" id="include-recent"> 匯出最近使用名稱（預設關閉）</label>
+          <button type="button" class="button button-primary" id="export-settings">匯出設定 JSON</button>
+        </div>
+        <div class="import-box">
+          <label for="import-file">選擇設定檔</label>
+          <input id="import-file" type="file" accept="application/json,.json">
+          <p id="import-preview" class="section-note">匯入前會驗證 schema、欄位型別、長度與不安全 key。</p>
+          <div class="button-row">
+            <button type="button" class="button button-secondary" id="import-merge" disabled>合併匯入</button>
+            <button type="button" class="button button-danger" id="import-replace" disabled>取代現有設定</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="privacy-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">隱私控制</p>
+            <h2 id="privacy-heading">隱私與排除網站</h2>
+          </div>
+        </div>
+        <label class="check-row prominent"><input type="checkbox" id="record-recent"> 記錄最近使用名稱</label>
+        <p class="section-note">關閉後仍可手動命名、使用收藏與自動規則，只是不再新增最近使用名稱；這不代表無痕或完全不留資料。</p>
+        <div class="origin-form">
+          <label for="excluded-origin">永遠排除的網站 origin</label>
+          <div class="inline-controls">
+            <input id="excluded-origin" type="url" placeholder="https://example.com">
+            <button type="button" class="button button-secondary" id="add-excluded">加入排除</button>
+          </div>
+        </div>
+        <div id="excluded-list" class="tag-list"></div>
+        <div class="danger-zone">
+          <h3>一鍵清除</h3>
+          <p class="section-note">清除長期設定不會移除 Extension、不會自動撤銷網站權限，也不會自動恢復目前已命名分頁；目前分頁會維持到你逐一恢復或關閉。</p>
+          <div class="button-row">
+            <button type="button" class="button button-secondary" data-clear="recent">清除最近名稱</button>
+            <button type="button" class="button button-secondary" data-clear="favorites">清除收藏</button>
+            <button type="button" class="button button-secondary" data-clear="rules">清除規則</button>
+            <button type="button" class="button button-danger" id="clear-all">清除全部長期設定</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-card" aria-labelledby="permissions-heading">
+        <div class="section-heading">
+          <div>
+          <p class="eyebrow">網站權限</p>
+            <h2 id="permissions-heading">已授權網站 origins</h2>
+          </div>
+        </div>
+        <p class="section-note">撤銷後規則會保留並標示需要授權；手動 activeTab 改名仍可使用。</p>
+        <div id="permissions-list" class="tag-list"></div>
+      </section>
+
+      <section class="settings-card about-card" aria-labelledby="about-heading">
+        <h2 id="about-heading">隱私說明與已知限制</h2>
+        <p>Tab Labels 不讀取網頁正文、表單、密碼、Cookie 或對話內容，也不傳送資料、不做行為追蹤或使用量測、不載入遠端程式碼、不使用帳號或雲端同步。自訂 favicon 目前暫時停用，Extension 不會修改網頁 favicon，也不會在頁面載入後維持 favicon。</p>
+        <p>Chrome 受保護頁面（例如 chrome://、Chrome Web Store、Extension 內部頁面）不能注入。網站權限只在建立或手動授權自動規則時要求，匯入規則本身不會取得權限。</p>
+      </section>
+    </main>
+    <script src="core.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

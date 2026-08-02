@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>已命名分頁｜Tab Labels</title>
+    <link rel="stylesheet" href="tab-manager.css">
+  </head>
+  <body>
+    <main class="manager-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Tab Labels</p>
+          <h1>已命名分頁</h1>
+          <p class="lede">搜尋目前 Chrome 中由 Tab Labels 設定名稱的分頁。清單不顯示完整 URL。</p>
+        </div>
+        <nav class="page-nav" aria-label="頁面">
+          <a href="options.html">設定</a>
+          <button type="button" id="refresh">重新整理</button>
+        </nav>
+      </header>
+
+      <label class="search-label" for="search">搜尋名稱或 hostname</label>
+      <input id="search" class="search-input" type="search" placeholder="例如：GitHub 或 github.com" autocomplete="off">
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="tabs-list" class="tabs-list" aria-label="已命名分頁"></section>
+    </main>
+    <script src="core.js"></script>
+    <script src="tab-manager.js"></script>
+  </body>
+</html>

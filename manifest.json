@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tab Labels",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "為目前的 Chrome 分頁設定工作用自訂顯示名稱。",
   "minimum_chrome_version": "102",
   "icons": {
@@ -26,8 +26,17 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "tabs"
   ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": {
@@ -35,6 +44,13 @@
         "mac": "Command+Shift+L"
       },
       "description": "開啟 Tab Labels popup"
+    },
+    "open-named-tabs": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "開啟已命名分頁"
     }
   }
 }
