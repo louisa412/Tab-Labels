@@ -103,15 +103,6 @@ input[type="text"]:focus-visible, select:focus-visible, button:focus-visible {
 .chip-remove { padding: 0 7px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-muted); }
 .chip-remove:hover { background: var(--danger-soft); color: var(--danger); }
 .empty-note { color: var(--text-muted); font-size: 11px; }
-.favicon-editor { display: grid; grid-template-columns: 64px 1fr; gap: 12px; margin-top: 10px; }
-.favicon-preview-wrap { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
-.favicon-preview, .favicon-preview-empty { width: 42px; height: 42px; }
-.favicon-preview-empty { display: grid; place-items: center; border-radius: 10px; background: var(--primary); color: #fff; font-size: 15px; font-weight: 700; }
-.favicon-fields input[type="text"] { height: 32px; }
-.color-row { display: grid; grid-template-columns: auto 32px auto 32px; align-items: center; gap: 5px; margin-top: 8px; }
-.color-row label { margin: 0; font-size: 11px; }
-input[type="color"] { width: 28px; height: 25px; padding: 1px; border: 1px solid var(--border); border-radius: 5px; background: transparent; }
-.favicon-fields select { height: 31px; margin-top: 6px; }
 .pattern-preview { overflow: hidden; margin: 7px 0 0; padding: 7px 8px; border-radius: 7px; background: var(--surface-muted); color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .rule-actions { margin-top: 8px; }
 .popup-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 2px 0; }
@@ -125,5 +116,5 @@ input[type="color"] { width: 28px; height: 25px; padding: 1px; border: 1px solid
     --primary-soft: #2d3569; --danger: #ff9eaa; --danger-soft: #482832; --success: #8be0b7;
     --success-soft: #1f4033; --focus: #aab5ff;
   }
-  .button-primary, .favicon-preview-empty, .app-mark { color: #161a2a; }
+  .button-primary, .app-mark { color: #161a2a; }
 }

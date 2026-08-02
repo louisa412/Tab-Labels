@@ -151,10 +151,10 @@ test("manual title record reload reinstalls title without evaluating auto rules"
   });
   assert.equal(worker.getLoadAction(), "restore-session");
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, ["installTitleController"]);
 });
 
-test("manual favicon record reload reinstalls favicon", async () => {
+test("legacy favicon-only record is sanitized and never injected", async () => {
   const worker = createWorker({
     record: {
       source: "manual",
@@ -165,10 +165,11 @@ test("manual favicon record reload reinstalls favicon", async () => {
     }
   });
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, []);
+  assert.equal(worker.session.labelsByTab["7"], undefined);
 });
 
-test("manual title and favicon reload together", async () => {
+test("manual title with legacy favicon reload reinstalls title only", async () => {
   const worker = createWorker({
     record: {
       source: "manual",
@@ -179,7 +180,8 @@ test("manual title and favicon reload together", async () => {
     }
   });
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, ["installTitleController"]);
+  assert.equal(worker.session.labelsByTab["7"].customFavicon, null);
 });
 
 test("manual record wins with no matching rule", async () => {
@@ -200,7 +202,7 @@ test("manual record wins with no matching rule", async () => {
     permissionGranted: true
   });
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, ["installTitleController"]);
 });
 
 test("manual override wins over matching auto rule", async () => {
@@ -221,7 +223,7 @@ test("manual override wins over matching auto rule", async () => {
     permissionGranted: true
   });
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, ["installTitleController"]);
 });
 
 test("auto record reload evaluates and reapplies matching rule", async () => {
@@ -238,6 +240,7 @@ test("auto record reload evaluates and reapplies matching rule", async () => {
       pattern: "https://example.com/",
       matchType: "prefix",
       label: "自動名稱",
+      favicon: { text: "A", background: "#123456" },
       enabled: true,
       updatedAt: "2026-08-02T00:00:00.000Z"
     }],
@@ -245,7 +248,32 @@ test("auto record reload evaluates and reapplies matching rule", async () => {
   });
   assert.equal(worker.getLoadAction(), "evaluate-auto");
   await worker.reload();
-  assert.deepEqual(worker.calls, ["readPageState", "installTabController"]);
+  assert.deepEqual(worker.calls, ["readPageState", "installTitleController"]);
+  assert.equal(worker.session.labelsByTab["7"].customFavicon, null);
+});
+
+test("legacy favorite and rule favicon data stay data-only", async () => {
+  const worker = createWorker({
+    rules: [{
+      id: "auto",
+      pattern: "https://example.com/",
+      matchType: "prefix",
+      label: "自動名稱",
+      favicon: { text: "A", background: "#123456" },
+      enabled: true
+    }],
+    permissionGranted: true
+  });
+  const favorite = await worker.sendMessage({
+    type: "save-favorite",
+    label: "收藏名稱",
+    favicon: { text: "F", background: "#654321" }
+  });
+  assert.equal(favorite.ok, true);
+  assert.equal(favorite.favorite.favicon, null);
+  await worker.reload();
+  assert.deepEqual(worker.calls, ["readPageState", "installTitleController"]);
+  assert.equal(worker.session.labelsByTab["7"].customFavicon, null);
 });
 
 test("no record with matching rule applies auto rule", async () => {
@@ -261,7 +289,7 @@ test("no record with matching rule applies auto rule", async () => {
     permissionGranted: true
   });
   await worker.reload();
-  assert.deepEqual(worker.calls, ["readPageState", "installTabController"]);
+  assert.deepEqual(worker.calls, ["readPageState", "installTitleController"]);
 });
 
 test("no record with no matching rule does not inject", async () => {
@@ -291,7 +319,7 @@ test("paused auto record reload keeps its current presentation and pause state",
   });
   assert.equal(worker.getLoadAction(), "restore-session");
   await worker.reload();
-  assert.deepEqual(worker.calls, ["installTabController"]);
+  assert.deepEqual(worker.calls, ["installTitleController"]);
   assert.equal(worker.session.labelsByTab["7"].autoRulePaused, true);
 });
 
@@ -322,7 +350,7 @@ test("manual presentation survives same-origin navigation and refresh", async ()
   });
   worker.setUrl("https://example.com/next");
   await worker.reload();
-  assert.deepEqual(worker.calls, ["readPageState", "installTabController"]);
+  assert.deepEqual(worker.calls, ["readPageState", "installTitleController"]);
   assert.equal(worker.session.labelsByTab["7"].customTitle, "手動名稱");
   assert.equal(worker.session.labelsByTab["7"].pageUrl, "https://example.com/next");
 });

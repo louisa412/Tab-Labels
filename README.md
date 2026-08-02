@@ -1,16 +1,16 @@
 # Tab Labels
 
-Tab Labels 是一個本機載入的 Manifest V3 Chrome Extension，讓你快速替分頁命名、設定本機產生的 favicon、搜尋已命名分頁，並以使用者明確授權的網址規則自動套用設定。
+Tab Labels 是一個本機載入的 Manifest V3 Chrome Extension，讓你快速替分頁命名、搜尋已命名分頁，並以使用者明確授權的網址規則自動套用設定。自訂 favicon 目前暫時停用，避免網站相容性問題。
 
 Phase 2 開發版版本號是 `0.2.0`。本輪不建立正式 `v0.2.0` tag、Release 或 Chrome Web Store 發布；目前 GitHub 最新正式 Release 仍是 [`v0.1.0`](https://github.com/louisa412/Tab-Labels/releases/tag/v0.1.0)。
 
 ## Phase 2 功能
 
 - 最近使用名稱最多 15 筆：去重、新名稱移到最前方、逐筆點擊填入、popup 一鍵清除。
-- 收藏名稱：可綁定 favicon，在 Options 頁改名、儲存、刪除與上移／下移。
+- 收藏名稱：在 Options 頁改名、儲存、刪除與上移／下移。既有 favicon 欄位會保留以維持資料相容性，但目前不會套用。
 - 自動補字：收藏優先於最近使用，支援開頭與包含匹配；`↑`、`↓`、`Enter`、`Escape` 可用鍵盤操作。
 - 名稱安全整理：去除頭尾空白、連續空白縮成一個、`  ｜  ` 正規化成 `｜`，保留使用者大小寫與語言。
-- 本機 favicon 產生器：1–2 個字元、背景色、自動高對比文字色或自訂文字色、圓形或圓角方形。使用 32×32 PNG data URL，本機產生、不上傳圖片、不載入外部字型。
+- 自訂 favicon：暫時停用，正在改善相容性；安全版本不修改頁面 favicon，也不觀察整個 `<head>`。
 - 已命名分頁管理頁：搜尋自訂名稱與 hostname，顯示目前分頁、視窗、favicon；點擊切換、直接恢復原名、確認後關閉分頁。
 - 自動命名規則：exact 完整網址與 prefix 網址前綴。exact 優先；prefix 同時匹配時較長者優先；同等精確度以較晚更新者優先。
 - 單一分頁可暫停自動命名，關閉分頁後隨 session data 消失；也可重新套用規則。
@@ -35,14 +35,26 @@ Chrome 不會直接安裝 ZIP；若使用 ZIP，必須先解壓縮，再選取�
 1. 打開一般 `http://` 或 `https://` 網站，點擊工具列上的 Tab Labels，或按 popup command。
 2. 輸入名稱後按「儲存名稱」或 Enter。名稱只套用於目前 tabId。
 3. 點擊「加入收藏」保存常用名稱；點擊收藏或最近名稱只會填入輸入框，仍需按儲存確認。
-4. 在自訂 favicon 區輸入 1–2 個字元，設定顏色與形狀，再按「套用 favicon」。恢復標題與恢復 favicon 是分開的操作。
+4. 自訂 favicon 區會顯示「自訂 favicon 暫時停用，正在改善相容性。」；此版本不提供套用或恢復 favicon 的操作。
 5. 儲存名稱後，popup 會顯示 exact 與安全 prefix pattern。按下建立規則後才會進入 origin 授權流程。
 6. 若網站在排除清單，popup 會明確提示；要只在本次手動操作，需勾選「本次仍允許手動套用」。
 7. 使用「已命名分頁」開啟搜尋與切換頁；使用「設定與匯入匯出」開啟 Options。
 
-網站動態改寫 `<title>` 或 favicon 相關 `<link rel>` 元素時，Tab Labels 會盡量重新套用自己的設定。它只操作這些元素，不讀取網頁正文、表單、密碼、Cookie 或可編輯內容。
+網站動態改寫 `<title>` 時，Tab Labels 只重新套用自訂名稱。標題 controller 只觀察 `<title>` 節點，不觀察整個 `<head>`，也不讀取網頁正文、表單、密碼、Cookie 或可編輯內容。本安全版本完全不修改頁面 favicon。
 
-自訂 favicon 會建立一個位於 `<head>` 最後方、標記為 `data-tab-labels-managed="true"` 的 `rel="icon"` PNG link。它會精確辨識含有 `icon` rel token 的 tab favicon（包含 `shortcut icon`），暫時停用其他 tab favicon link，並保留 `apple-touch-icon` 不動；恢復時會還原所有原始 link 與網站在套用期間更新的 href。這是為了避免網站的多個 favicon link 或動態新增 link 覆蓋 Chrome 實際採用的圖示。
+### P0 favicon 事故處理
+
+先前開發版的 favicon 維持策略會在觀察 `<head>` 後反覆修改 favicon link；網站自身的 favicon manager 也可能同時修改相同節點，形成 mutation feedback loop，導致頁面無回應。此版本已移除 favicon runtime、favicon observer、favicon reload 維持與 favicon restore；不要繼續驗收舊版 favicon 功能。
+
+若使用者套用舊版 favicon 後頁面卡死：
+
+1. 關閉該分頁。
+2. 到 `chrome://extensions`。
+3. 關閉或重新載入 Tab Labels。
+4. 更新至安全版本。
+5. 再重新開啟網站。
+
+安全版本啟動時只會在 `chrome.storage.session` 讀取舊 record，清除或忽略 favicon runtime 欄位，不會進入每個頁面清理 DOM，也不會再次注入舊 controller。
 
 ## 已命名分頁與快捷鍵
 
@@ -72,12 +84,12 @@ Chrome 可能因系統或其他 Extension 衝突而不接受預設快捷鍵。�
 
 頁面完成載入時會先檢查目前 tabId 的 session record，再決定是否評估自動規則：
 
-- 手動 record 只要仍有 custom title 或 custom favicon，就先重新注入既有設定；沒有 matching auto rule 也不會清除或跳過手動狀態。
-- paused auto record 會重新注入目前已存在的 presentation，但不會重新選擇新規則。
+- 手動 record 只要仍有 custom title，就先重新注入既有標題；沒有 matching auto rule 也不會清除或跳過手動狀態。
+- paused auto record 只保留暫停狀態，不會注入 favicon。
 - auto record 才會依目前 URL、排除設定與 permission 重新評估。
 - 沒有 session record 才會從零開始匹配 auto rule。
 
-同一 URL 重新整理一定保留手動名稱與 favicon。tabId 工作階段模型也會保留手動 presentation 跨站內或跨 origin 導覽；若跨 origin 後 activeTab 或 host access 已被撤銷，Extension 會保留 session record，不會因一次注入失敗刪除設定，使用者下次主動開啟 popup 後可重新注入或恢復原名。
+同一 URL 重新整理一定保留手動名稱。tabId 工作階段模型也會保留手動名稱跨站內或跨 origin 導覽；若跨 origin 後 activeTab 或 host access 已被撤銷，Extension 會保留 session record，不會因一次注入失敗刪除設定，使用者下次主動開啟 popup 後可重新注入或恢復原名。
 
 Chrome service worker 可能在事件之間重新啟動，因此規則狀態保存在 `chrome.storage.local`，而每次需要注入時仍會重新確認 permission。Chrome 不保證 Extension 能注入所有頁面：`chrome://`、Chrome Web Store、Extension 內部頁面與其他受保護頁面會被跳過。
 
@@ -92,7 +104,7 @@ Chrome service worker 可能在事件之間重新啟動，因此規則狀態保�
 包含：
 
 - schema version、Extension version、exportedAt；
-- 收藏名稱與綁定 favicon；
+- 收藏名稱與相容性保留的 favicon 欄位；目前不會套用 favicon；
 - 自動命名規則；
 - 排除 origins；
 - 隱私設定與 UI 偏好；
@@ -102,7 +114,7 @@ Chrome service worker 可能在事件之間重新啟動，因此規則狀態保�
 
 merge 策略：
 
-- 相同收藏名稱合併，匯入的 favicon 與 metadata 覆蓋舊項目；
+- 相同收藏名稱合併，匯入的收藏資料覆蓋舊項目；favicon 欄位會保留在 schema 中但不會套用；
 - 自動規則以 `matchType + pattern` 識別，匯入項目覆蓋衝突規則；
 - 排除 origins 取聯集；
 - 匯入的隱私與 UI 設定覆蓋目前設定；
@@ -122,9 +134,9 @@ replace 模式需要明確確認，會取代收藏、規則、排除、隱私與
 - `source`、`autoRuleId`
 - `pageUrl`
 - `autoRulePaused`
-- 注入的 title／favicon 狀態
+- 注入的 title 狀態；favicon runtime 欄位只為相容性保留且安全版本會停用
 
-`originalFavicon` 會保存頁面所有 tab favicon link 的必要狀態；`apple-touch-icon` 不屬於 Chrome tab favicon，不會被移除或改寫。
+舊版本的 `originalFavicon` 與 `customFavicon` 可能存在於 session，但安全版本會在讀取時將它們清為 `null`，並將 `injected.favicon` 設為 `false`；不會讀取或修改頁面 favicon link。
 
 關閉 tab 時會清理該筆 session。Chrome 或 Extension 重啟後，session storage 可能清空；它不是跨電腦或永久保存格式。
 
@@ -144,7 +156,7 @@ Phase 1 的舊 `labelsByTab` { `label, originalTitle` } 會在讀取時安全補
 | permission | 用途 | 安裝時／使用時 | 拒絕後仍可用 | 是否造成全站資料警告 |
 | --- | --- | --- | --- | --- |
 | `activeTab` | 使用者開啟 popup 後，手動處理目前分頁 | 安裝時宣告；使用者手勢取得暫時存取 | 手動操作可在支援頁面重試；受保護頁面仍不可用 | 不要求永久全站存取 |
-| `scripting` | 注入只處理 `<title>` 與 favicon link 的本機函式 | 安裝時宣告 | 不能注入頁面，但設定頁、收藏、匯入匯出仍可用 | 本身不等於全站 host permission |
+| `scripting` | 注入只處理 `<title>` 的本機函式 | 安裝時宣告 | 不能注入頁面，但設定頁、收藏、匯入匯出仍可用 | 本身不等於全站 host permission |
 | `storage` | 保存 `chrome.storage.session` 與 `chrome.storage.local` | 安裝時宣告 | Extension 核心無法保存設定 | 不讀取網站資料 |
 | `tabs` | 列出已命名 tab、hostname、favicon、windowId，並完成切換 | 安裝時宣告 | 手動目前分頁改名仍可用，但已命名分頁全域搜尋與切換不可完整運作 | Chrome 可能顯示「讀取瀏覽記錄」類警告 |
 | optional `http://*/*`／`https://*/*` | 讓使用者逐一授權自動規則要注入的 origin | 不在安裝時授予；建立規則或 Options 主動授權時才請求實際 origin | 規則保留但標示需要授權；手動 `activeTab` 仍可用 | 不直接授予全站；Chrome 會針對實際 origin 顯示讀取及變更該網站資料的提示 |
@@ -155,7 +167,7 @@ Phase 1 的舊 `labelsByTab` { `label, originalTitle` } 會在讀取時安全補
 
 Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是無痕模式，也不代表完全不留資料。收藏、規則與目前工作階段資料仍可存在。
 
-排除網站以 origin 保存，例如 `https://example.com`。排除後自動名稱與自動 favicon 不執行；手動操作會顯示排除提示，只有使用者明確勾選本次操作才會暫時套用。移除排除 origin 後，自動規則可恢復。
+排除網站以 origin 保存，例如 `https://example.com`。排除後自動名稱不執行；自訂 favicon 目前本來就不會執行。手動操作會顯示排除提示，只有使用者明確勾選本次操作才會暫時套用。移除排除 origin 後，自動規則可恢復。
 
 「清除全部長期設定」不會移除 Extension、不會自動撤銷 Chrome 已授予的 optional origins，也不會自動恢復目前已命名分頁。若要恢復目前分頁，請從 popup 或已命名分頁頁面逐一恢復。
 
@@ -170,14 +182,12 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 - [ ] 啟用「不記錄最近名稱」後設定新名稱，確認不進入歷史。
 - [ ] 在 Options 將收藏改名、上移／下移、刪除，確認順序穩定。
 
-### favicon
+### favicon（目前停用）
 
-- [ ] 設定一個字母與背景色，確認分頁 favicon 改變。
-- [ ] 重新整理後確認自訂 favicon 仍存在。
-- [ ] 讓測試網站自行更新 favicon，確認 Tab Labels 仍維持自訂圖示。
-- [ ] 使用「恢復原名」只恢復標題，再使用「恢復原始 favicon」恢復圖示。
-- [ ] 兩個相同網站分頁設定不同名稱與 favicon，確認 tabId 狀態互不干擾。
-- [ ] 恢復原名後重新整理，確認舊名稱與 favicon 都不會復活。
+- [ ] Popup 顯示「自訂 favicon 暫時停用，正在改善相容性。」。
+- [ ] 確認 popup 沒有可用的 favicon 套用或恢復按鈕。
+- [ ] 確認設定收藏或自動規則不會觸發頁面 favicon 修改。
+- [ ] 舊版曾使用 favicon 的 session 在安全版本不會再次注入 favicon。
 
 ### 分頁搜尋
 
@@ -194,7 +204,7 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 - [ ] 拒絕網站權限，確認規則未建立或保留為需要授權，手動命名仍可用。
 - [ ] 授予網站權限，確認重新整理與重開匹配頁面後自動套用。
 - [ ] exact 與 prefix 同時符合時，確認 exact 勝出。
-- [ ] 在 Options 停用／啟用規則、編輯名稱與 favicon、刪除規則。
+- [ ] 在 Options 停用／啟用規則、編輯名稱、刪除規則；確認 favicon 設定明確顯示暫時停用。
 - [ ] 暫停目前分頁規則，再按「重新套用規則」。
 - [ ] 在 Options 撤銷網站權限，確認規則保留但顯示需要授權。
 
@@ -208,7 +218,7 @@ Options 的「不記錄最近名稱」只停止新增最近使用名稱，不是
 
 ### 排除網站
 
-- [ ] 加入一個 origin，確認匹配的自動規則與 favicon 不執行。
+- [ ] 加入一個 origin，確認匹配的自動規則不執行；自訂 favicon 仍維持停用。
 - [ ] popup 手動操作時確認顯示排除提示。
 - [ ] 明確勾選本次手動操作後確認只暫時套用。
 - [ ] 移除排除 origin，確認自動規則恢復。
@@ -222,7 +232,7 @@ node --test tests/core.test.js
 node --test tests/reload-regression.test.js tests/favicon-regression.test.js
 ```
 
-測試涵蓋名稱正規化、最近名稱上限與去重、收藏 CRUD 與排序、autocomplete、exact／prefix 規則、規則優先順序、disabled、排除與 tab pause、JSON export/import、merge/replace 模型、惡意 key、schema migration、PNG favicon data 生成與清除資料，以及手動／自動分頁 reload 與多 favicon link 的套用、動態改寫、恢復和 observer regression cases。
+測試涵蓋名稱正規化、最近名稱上限與去重、收藏 CRUD 與排序、autocomplete、exact／prefix 規則、規則優先順序、disabled、排除與 tab pause、JSON export/import、merge/replace 模型、惡意 key、schema migration、清除資料，以及手動／自動分頁 reload、title-only controller 與 P0 favicon 停用 regression cases。核心保留的 favicon data helper 只作為舊設定 schema 的純資料相容性測試，不會注入頁面。
 
 靜態檢查可使用：
 

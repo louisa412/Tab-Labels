@@ -10,111 +10,27 @@ const workerSource = fs.readFileSync(
   "utf8"
 );
 
-class FakeElement {
-  constructor(tagName) {
-    this.tagName = tagName.toUpperCase();
-    this.attributes = new Map();
-    this.children = [];
-    this.parentElement = null;
-  }
-
-  setAttribute(name, value) {
-    this.attributes.set(name, String(value));
-  }
-
-  getAttribute(name) {
-    return this.attributes.has(name) ? this.attributes.get(name) : null;
-  }
-
-  removeAttribute(name) {
-    this.attributes.delete(name);
-  }
-
-  appendChild(child) {
-    if (child.parentElement) {
-      child.parentElement.removeChild(child);
-    }
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  removeChild(child) {
-    const index = this.children.indexOf(child);
-    if (index >= 0) {
-      this.children.splice(index, 1);
-      child.parentElement = null;
-    }
-  }
-
-  remove() {
-    if (this.parentElement) {
-      this.parentElement.removeChild(this);
-    }
-  }
-
-  get lastElementChild() {
-    return this.children[this.children.length - 1] || null;
-  }
-
-  get nextElementSibling() {
-    if (!this.parentElement) {
-      return null;
-    }
-    const index = this.parentElement.children.indexOf(this);
-    return this.parentElement.children[index + 1] || null;
-  }
-
-  get href() {
-    return this.getAttribute("href") || "";
-  }
-
-  querySelectorAll(selector) {
-    const matches = (element) => {
-      if (element.tagName !== "LINK") {
-        return false;
-      }
-      if (selector === "link") {
-        return true;
-      }
-      if (selector === "link[rel]") {
-        return element.getAttribute("rel") !== null;
-      }
-      return false;
-    };
-    const result = [];
-    const visit = (element) => {
-      element.children.forEach((child) => {
-        if (matches(child)) {
-          result.push(child);
-        }
-        visit(child);
-      });
-    };
-    visit(this);
-    return result;
-  }
-}
-
-class FakeDocument {
+class FakeTitleElement {
   constructor() {
-    this.head = new FakeElement("head");
-    this.title = "網站原始標題";
-  }
-
-  createElement(tagName) {
-    return new FakeElement(tagName);
+    this.textContent = "網站原始標題";
   }
 }
 
 class FakeMutationObserver {
+  static instances = [];
+
   constructor(callback) {
     this.callback = callback;
+    this.target = null;
+    this.options = null;
     this.disconnected = false;
-    this.triggerCount = 0;
+    this.callbackCount = 0;
+    FakeMutationObserver.instances.push(this);
   }
 
-  observe() {
+  observe(target, options) {
+    this.target = target;
+    this.options = options;
     this.disconnected = false;
   }
 
@@ -124,7 +40,7 @@ class FakeMutationObserver {
 
   trigger() {
     if (!this.disconnected) {
-      this.triggerCount += 1;
+      this.callbackCount += 1;
       this.callback([]);
     }
   }
@@ -161,14 +77,15 @@ function makeChrome() {
   };
 }
 
-function createFixture(icons = []) {
-  const document = new FakeDocument();
-  icons.forEach((icon) => {
-    const link = document.createElement("link");
-    Object.entries(icon).forEach(([name, value]) => link.setAttribute(name, value));
-    document.head.appendChild(link);
-  });
-
+function createFixture() {
+  FakeMutationObserver.instances = [];
+  const titleElement = new FakeTitleElement();
+  const document = {
+    title: titleElement.textContent,
+    querySelector(selector) {
+      return selector === "title" ? titleElement : null;
+    }
+  };
   const context = {
     chrome: makeChrome(),
     TabLabelsCore: core,
@@ -176,181 +93,70 @@ function createFixture(icons = []) {
     console,
     URL,
     document,
-    MutationObserver: FakeMutationObserver,
-    queueMicrotask,
-    setTimeout,
-    clearTimeout
+    MutationObserver: FakeMutationObserver
   };
   vm.runInNewContext(
-    workerSource + "\nglobalThis.__faviconTestFunctions = { installTabController, readPageState };",
+    workerSource + "\nglobalThis.__p0TestFunctions = { installTitleController, disableTitleInController, readPageState };",
     context
   );
-
-  async function flush() {
-    await Promise.resolve();
-    await Promise.resolve();
-    await new Promise((resolve) => setImmediate(resolve));
-    await Promise.resolve();
-  }
-
-  function install(customFaviconUrl = "data:image/png;base64,custom", originalFavicon = null, label = "測試名稱") {
-    const result = context.__faviconTestFunctions.installTabController(
-      label,
-      "網站原始標題",
-      originalFavicon,
-      customFaviconUrl
-    );
-    return { result, controller: context.__tabLabelsController__ };
-  }
-
-  return { context, document, flush, install };
+  return { context, document, titleElement };
 }
 
-function isTabFavicon(link) {
-  return (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).includes("icon");
-}
-
-function allLinks(document) {
-  return document.head.querySelectorAll("link");
-}
-
-function activeFavicons(document) {
-  return allLinks(document).filter(isTabFavicon);
-}
-
-function managedFavicons(document) {
-  return allLinks(document).filter((link) => link.getAttribute("data-tab-labels-managed") === "true");
-}
-
-function createIcon(document, attributes) {
-  const link = document.createElement("link");
-  Object.entries(attributes).forEach(([name, value]) => link.setAttribute(name, value));
-  document.head.appendChild(link);
-  return link;
-}
-
-test("no favicon creates the only active managed PNG favicon", () => {
+test("title controller observes only the title element, never the head", () => {
   const fixture = createFixture();
-  fixture.install();
-  assert.equal(managedFavicons(fixture.document).length, 1);
-  assert.equal(managedFavicons(fixture.document)[0].getAttribute("rel"), "icon");
-  assert.equal(managedFavicons(fixture.document)[0].getAttribute("type"), "image/png");
-  assert.deepEqual(activeFavicons(fixture.document).map((link) => link.getAttribute("href")), [
-    "data:image/png;base64,custom"
-  ]);
+  fixture.context.__p0TestFunctions.installTitleController("自訂名稱", "網站原始標題");
+  const observer = FakeMutationObserver.instances[0];
+  assert.equal(FakeMutationObserver.instances.length, 1);
+  assert.equal(observer.target, fixture.titleElement);
+  assert.equal(JSON.stringify(observer.options), JSON.stringify({ childList: true, characterData: true, subtree: true }));
+  assert.equal(fixture.document.title, "自訂名稱");
+  assert.equal(Object.prototype.hasOwnProperty.call(fixture.document, "head"), false);
 });
 
-test("single favicon is disabled while custom icon is active and restores", () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  const { controller } = fixture.install();
-  assert.equal(activeFavicons(fixture.document).length, 1);
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "data:image/png;base64,custom");
-  controller.restoreFavicon();
-  assert.deepEqual(activeFavicons(fixture.document).map((link) => link.getAttribute("href")), [
-    "https://example.com/original.ico"
-  ]);
+test("title changes are repaired without queueing a mutation loop", () => {
+  const fixture = createFixture();
+  fixture.context.__p0TestFunctions.installTitleController("自訂名稱", "網站原始標題");
+  const observer = FakeMutationObserver.instances[0];
+  fixture.document.title = "網站動態標題";
+  observer.trigger();
+  assert.equal(fixture.document.title, "自訂名稱");
+  assert.equal(observer.callbackCount, 1);
+  observer.trigger();
+  assert.equal(fixture.document.title, "自訂名稱");
+  assert.equal(observer.callbackCount, 2);
+  assert.equal(workerSource.includes("queueMicrotask"), false);
 });
 
-test("multiple tab favicon links are managed together while apple-touch-icon stays untouched", () => {
-  const fixture = createFixture([
-    { rel: "apple-touch-icon", href: "https://example.com/apple.png" },
-    { rel: "icon", href: "https://example.com/16.png", type: "image/png", sizes: "16x16" },
-    { rel: "shortcut icon", href: "https://example.com/favicon.ico" }
-  ]);
-  const { controller } = fixture.install();
-  assert.equal(managedFavicons(fixture.document).length, 1);
-  assert.deepEqual(activeFavicons(fixture.document).map((link) => link.getAttribute("href")), [
-    "data:image/png;base64,custom"
-  ]);
-  assert.equal(allLinks(fixture.document)[0].getAttribute("rel"), "apple-touch-icon");
-  controller.restoreFavicon();
-  assert.deepEqual(activeFavicons(fixture.document).map((link) => link.getAttribute("href")), [
-    "https://example.com/16.png",
-    "https://example.com/favicon.ico"
-  ]);
-  assert.equal(allLinks(fixture.document)[0].getAttribute("rel"), "apple-touch-icon");
-});
-
-test("website-added favicon is disabled and managed favicon remains last", async () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  const { controller } = fixture.install();
-  createIcon(fixture.document, { rel: "icon", href: "https://example.com/new.ico" });
-  controller.observer.trigger();
-  await fixture.flush();
-  assert.equal(fixture.document.head.lastElementChild.getAttribute("data-tab-labels-managed"), "true");
-  assert.deepEqual(activeFavicons(fixture.document).map((link) => link.getAttribute("href")), [
-    "data:image/png;base64,custom"
-  ]);
-});
-
-test("website changes a disabled favicon href without replacing the custom icon", async () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  const { controller } = fixture.install();
-  const disabled = allLinks(fixture.document).find((link) => link.getAttribute("data-tab-labels-disabled") === "true");
-  disabled.setAttribute("href", "https://example.com/updated.ico");
-  disabled.setAttribute("rel", "icon");
-  controller.observer.trigger();
-  await fixture.flush();
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "data:image/png;base64,custom");
-  controller.restoreFavicon();
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "https://example.com/updated.ico");
-});
-
-test("reload installation with saved favicon states recreates managed PNG favicon", () => {
-  const original = [{ href: "https://example.com/original.ico", rel: "icon", type: "", sizes: "" }];
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  fixture.install();
-  const reloaded = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  reloaded.install("data:image/png;base64,reloaded", original);
-  assert.equal(activeFavicons(reloaded.document).length, 1);
-  assert.equal(activeFavicons(reloaded.document)[0].getAttribute("href"), "data:image/png;base64,reloaded");
-});
-
-test("restoring favicon removes managed link and later observer work does not revive it", async () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  const { controller } = fixture.install();
-  controller.restoreFavicon();
-  controller.observer.trigger();
-  await fixture.flush();
-  assert.equal(managedFavicons(fixture.document).length, 0);
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "https://example.com/original.ico");
-});
-
-test("title-only record does not modify favicon links", () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  fixture.install("");
-  assert.equal(managedFavicons(fixture.document).length, 0);
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "https://example.com/original.ico");
-});
-
-test("favicon-only record installs custom favicon without requiring a title", () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  fixture.install("data:image/png;base64,custom", null, "");
+test("restore title stops the observer and does not touch favicon DOM", () => {
+  const fixture = createFixture();
+  fixture.context.__p0TestFunctions.installTitleController("自訂名稱", "網站原始標題");
+  const observer = FakeMutationObserver.instances[0];
+  const result = fixture.context.__p0TestFunctions.disableTitleInController("網站原始標題");
+  assert.equal(result.currentTitle, "網站原始標題");
+  assert.equal(observer.disconnected, true);
+  assert.equal(fixture.context.__tabLabelsTitleController__, undefined);
+  observer.trigger();
   assert.equal(fixture.document.title, "網站原始標題");
-  assert.equal(activeFavicons(fixture.document)[0].getAttribute("href"), "data:image/png;base64,custom");
 });
 
-test("extension-owned changes are idempotent and do not create duplicate managed links", async () => {
-  const fixture = createFixture([{ rel: "icon", href: "https://example.com/original.ico" }]);
-  const { controller } = fixture.install();
-  for (let index = 0; index < 10; index += 1) {
-    controller.observer.trigger();
-  }
-  await fixture.flush();
-  assert.equal(managedFavicons(fixture.document).length, 1);
-  assert.equal(activeFavicons(fixture.document).length, 1);
-  assert.ok(controller.observer.triggerCount >= 10);
+test("page head stress has no Tab Labels observer or favicon runtime", () => {
+  const faviconRuntimeMarkers = [
+    "__tabLabelsController__",
+    "data-tab-labels-managed",
+    "apply-favicon",
+    "restore-favicon",
+    "observer.observe(document.head",
+    "setInterval(",
+    "setTimeout("
+  ];
+  faviconRuntimeMarkers.forEach((marker) => {
+    assert.equal(workerSource.includes(marker), false, "unsafe favicon marker remains: " + marker);
+  });
 });
 
-test("readPageState captures all tab favicon links but ignores apple-touch-icon", () => {
-  const fixture = createFixture([
-    { rel: "apple-touch-icon", href: "https://example.com/apple.png" },
-    { rel: "icon", href: "https://example.com/16.png" },
-    { rel: "shortcut icon", href: "https://example.com/favicon.ico" }
-  ]);
-  const state = fixture.context.__faviconTestFunctions.readPageState("", "");
-  assert.deepEqual(Array.from(state.originalFavicon, (icon) => icon.href), [
-    "https://example.com/16.png",
-    "https://example.com/favicon.ico"
-  ]);
+test("readPageState is title-only and does not inspect favicon links", () => {
+  const fixture = createFixture();
+  const state = fixture.context.__p0TestFunctions.readPageState();
+  assert.equal(state.currentTitle, "網站原始標題");
+  assert.equal(state.websiteTitle, "網站原始標題");
 });

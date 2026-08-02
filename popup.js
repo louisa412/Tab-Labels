@@ -16,15 +16,6 @@ const elements = {
   saveFavorite: document.querySelector("#save-favorite"),
   excludedChoice: document.querySelector("#excluded-choice"),
   allowExcluded: document.querySelector("#allow-excluded"),
-  faviconText: document.querySelector("#favicon-text"),
-  faviconBackground: document.querySelector("#favicon-background"),
-  faviconForeground: document.querySelector("#favicon-foreground"),
-  faviconAutoContrast: document.querySelector("#favicon-auto-contrast"),
-  faviconShape: document.querySelector("#favicon-shape"),
-  faviconPreview: document.querySelector("#favicon-preview"),
-  faviconPreviewEmpty: document.querySelector("#favicon-preview-empty"),
-  applyFavicon: document.querySelector("#apply-favicon"),
-  restoreFavicon: document.querySelector("#restore-favicon"),
   ruleStatus: document.querySelector("#rule-status"),
   rulePreview: document.querySelector("#rule-preview"),
   createExact: document.querySelector("#create-exact"),
@@ -50,46 +41,6 @@ function showStatus(message, kind = "") {
   elements.status.setAttribute("role", kind === "error" ? "alert" : "status");
 }
 
-function currentFaviconConfig() {
-  const text = elements.faviconText.value.trim();
-  if (!text) {
-    return null;
-  }
-  return core.normalizeFaviconConfig({
-    text,
-    background: elements.faviconBackground.value,
-    foreground: elements.faviconAutoContrast.checked ? "auto" : elements.faviconForeground.value,
-    shape: elements.faviconShape.value
-  });
-}
-
-function renderFaviconPreview() {
-  const config = currentFaviconConfig();
-  const url = config ? core.faviconDataUrl(config) : "";
-  if (url) {
-    elements.faviconPreview.src = url;
-    elements.faviconPreview.hidden = false;
-    elements.faviconPreviewEmpty.hidden = true;
-  } else {
-    elements.faviconPreview.removeAttribute("src");
-    elements.faviconPreview.hidden = true;
-    elements.faviconPreviewEmpty.hidden = false;
-  }
-}
-
-function fillFavicon(config) {
-  const normalized = core.normalizeFaviconConfig(config);
-  if (!normalized) {
-    return;
-  }
-  elements.faviconText.value = normalized.text;
-  elements.faviconBackground.value = normalized.background;
-  elements.faviconAutoContrast.checked = normalized.foreground === "auto";
-  elements.faviconForeground.value = normalized.foreground === "auto" ? "#ffffff" : normalized.foreground;
-  elements.faviconShape.value = normalized.shape;
-  renderFaviconPreview();
-}
-
 function setBusy(nextBusy) {
   busy = nextBusy;
   const disabled = busy || !state || !state.editable;
@@ -98,8 +49,6 @@ function setBusy(nextBusy) {
     elements.clear,
     elements.save,
     elements.saveFavorite,
-    elements.applyFavicon,
-    elements.restoreFavicon,
     elements.createExact,
     elements.createPrefix,
     elements.pauseRule,
@@ -136,9 +85,6 @@ function renderCollectionButtons(container, values, source) {
     button.title = "填入「" + button.textContent + "」";
     button.addEventListener("click", () => {
       elements.input.value = button.textContent;
-      if (source === "favorite" && item.favicon) {
-        fillFavicon(item.favicon);
-      }
       elements.input.focus();
       showStatus("");
     });
@@ -190,12 +136,6 @@ function renderSuggestions() {
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => {
       elements.input.value = suggestion.label;
-      if (suggestion.source === "favorite") {
-        const favorite = (state.settings.favorites || []).find((entry) => entry.id === suggestion.favoriteId);
-        if (favorite && favorite.favicon) {
-          fillFavicon(favorite.favicon);
-        }
-      }
       closeSuggestions();
       elements.input.focus();
       void handleSave();
@@ -255,11 +195,6 @@ function render(nextState) {
   elements.host.textContent = state.tab && state.tab.hostname ? state.tab.hostname : "";
   elements.currentLabel.textContent = customLabel;
   elements.input.value = record && record.customTitle ? record.customTitle : "";
-  if (record && record.customFavicon) {
-    fillFavicon(record.customFavicon);
-  } else {
-    renderFaviconPreview();
-  }
   elements.excludedChoice.hidden = !state.excluded;
   elements.allowExcluded.checked = false;
   elements.allowExcluded.disabled = !state.excluded;
@@ -347,35 +282,10 @@ async function handleRestore() {
     elements.input.value = "";
     elements.currentLabel.textContent = "未設定";
     setTitlePreview(state.websiteTitle);
-    showStatus("已恢復原始分頁名稱；favicon 若仍在使用，可另外恢復。", "success");
+    showStatus("已恢復原始分頁名稱。", "success");
     renderRuleState();
   } catch (error) {
     showStatus(error.message || "恢復失敗，請再試一次。", "error");
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function handleApplyFavicon() {
-  const config = currentFaviconConfig();
-  if (!config) {
-    showStatus("請輸入 1–2 個字元後再產生 favicon。", "error");
-    elements.faviconText.focus();
-    return;
-  }
-  setBusy(true);
-  try {
-    const result = await sendMessage("apply-favicon", {
-      config,
-      allowExcluded: elements.allowExcluded.checked
-    });
-    if (!result || !result.ok) {
-      throw new Error(result && result.message ? result.message : "套用 favicon 失敗。");
-    }
-    state.record = result.record;
-    showStatus("已套用自訂 favicon；網站更新時會盡量維持。", "success");
-  } catch (error) {
-    showStatus(error.message || "套用 favicon 失敗。", "error");
   } finally {
     setBusy(false);
   }
@@ -388,10 +298,7 @@ async function handleSaveFavorite() {
     elements.input.focus();
     return;
   }
-  const result = await sendMessage("save-favorite", {
-    label,
-    favicon: currentFaviconConfig()
-  });
+  const result = await sendMessage("save-favorite", { label });
   if (!result || !result.ok) {
     showStatus(result && result.message ? result.message : "加入收藏失敗。", "error");
     return;
@@ -399,24 +306,6 @@ async function handleSaveFavorite() {
   state.settings = result.settings;
   showStatus("已加入收藏；收藏會保留在本機設定。", "success");
   renderCollections();
-}
-
-async function handleRestoreFavicon() {
-  setBusy(true);
-  try {
-    const result = await sendMessage("restore-favicon");
-    if (!result || !result.ok) {
-      throw new Error(result && result.message ? result.message : "恢復 favicon 失敗。");
-    }
-    if (state.record) {
-      state.record.customFavicon = null;
-    }
-    showStatus("已恢復網站原始 favicon。", "success");
-  } catch (error) {
-    showStatus(error.message || "恢復 favicon 失敗。", "error");
-  } finally {
-    setBusy(false);
-  }
 }
 
 async function handleCreateRule(matchType) {
@@ -429,8 +318,7 @@ async function handleCreateRule(matchType) {
     let result = await sendMessage("create-rule", {
       tabUrl: state.tab.url,
       matchType,
-      label: state.record.customTitle,
-      favicon: state.record.customFavicon
+      label: state.record.customTitle
     });
     if (result && result.needsPermission && result.originPattern) {
       const granted = await chrome.permissions.request({ origins: [result.originPattern] });
@@ -440,8 +328,7 @@ async function handleCreateRule(matchType) {
       result = await sendMessage("create-rule", {
         tabUrl: state.tab.url,
         matchType,
-        label: state.record.customTitle,
-        favicon: state.record.customFavicon
+        label: state.record.customTitle
       });
     }
     if (!result || !result.ok) {
@@ -476,9 +363,7 @@ async function handlePause(paused) {
 
 elements.form.addEventListener("submit", handleSave);
 elements.restore.addEventListener("click", handleRestore);
-elements.applyFavicon.addEventListener("click", handleApplyFavicon);
 elements.saveFavorite.addEventListener("click", handleSaveFavorite);
-elements.restoreFavicon.addEventListener("click", handleRestoreFavicon);
 elements.createExact.addEventListener("click", () => void handleCreateRule("exact"));
 elements.createPrefix.addEventListener("click", () => void handleCreateRule("prefix"));
 elements.pauseRule.addEventListener("click", () => void handlePause(true));
@@ -531,14 +416,6 @@ elements.input.addEventListener("keydown", (event) => {
     void handleSave();
   }
 });
-[
-  elements.faviconText,
-  elements.faviconBackground,
-  elements.faviconForeground,
-  elements.faviconAutoContrast,
-  elements.faviconShape
-].forEach((element) => element.addEventListener("input", renderFaviconPreview));
-elements.faviconAutoContrast.addEventListener("change", renderFaviconPreview);
 elements.openManager.addEventListener("click", () => {
   void chrome.tabs.create({ url: chrome.runtime.getURL("tab-manager.html") });
 });
@@ -549,5 +426,4 @@ document.addEventListener("click", (event) => {
   }
 });
 
-renderFaviconPreview();
 void loadState();

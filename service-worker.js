@@ -7,14 +7,12 @@ const {
   chooseMatchingRule,
   createDefaultSettings,
   createRuleKey,
-  faviconDataUrl,
   getTabLoadAction,
   isExcludedUrl,
   isNamedRecord,
   isProtectedUrl,
   mergeSettings,
   migrateSettings,
-  normalizeFaviconConfig,
   normalizeLabel,
   normalizeOrigin,
   normalizeRule,
@@ -32,7 +30,7 @@ function isScriptableUrl(url) {
 }
 
 function unsupportedMessage() {
-  return "Chrome 不允許 Extension 修改此頁面的分頁名稱或 favicon。";
+  return "Chrome 不允許 Extension 修改此頁面的分頁名稱。";
 }
 
 function excludedMessage(origin) {
@@ -47,6 +45,7 @@ async function getSessionRecords() {
   }
 
   const records = {};
+  let changed = false;
   Object.keys(raw).forEach((key) => {
     const source = raw[key];
     if (!source || typeof source !== "object") {
@@ -56,21 +55,39 @@ async function getSessionRecords() {
     const customTitle = normalizeLabel(
       typeof source.customTitle === "string" ? source.customTitle : source.label
     );
+    if (!customTitle && source.autoRulePaused !== true) {
+      if (source.customFavicon || source.originalFavicon || (source.injected && source.injected.favicon)) {
+        changed = true;
+      }
+      return;
+    }
+    const hadFaviconRuntimeState = Boolean(
+      source.customFavicon
+      || source.originalFavicon
+      || (source.injected && source.injected.favicon)
+    );
     records[key] = {
       ...source,
       tabId: Number.isFinite(Number(source.tabId)) ? Number(source.tabId) : Number(key),
       customTitle,
       label: customTitle,
       originalTitle: typeof source.originalTitle === "string" ? source.originalTitle : "",
-      originalFavicon: source.originalFavicon && typeof source.originalFavicon === "object"
-        ? source.originalFavicon
-        : null,
-      customFavicon: normalizeFaviconConfig(source.customFavicon),
+      originalFavicon: null,
+      customFavicon: null,
       autoRulePaused: source.autoRulePaused === true,
       source: source.source === "auto" ? "auto" : "manual",
-      pageUrl: typeof source.pageUrl === "string" ? source.pageUrl : ""
+      pageUrl: typeof source.pageUrl === "string" ? source.pageUrl : "",
+      injected: {
+        ...(source.injected && typeof source.injected === "object" ? source.injected : {}),
+        title: Boolean(customTitle),
+        favicon: false
+      }
     };
+    changed = changed || hadFaviconRuntimeState;
   });
+  if (changed) {
+    await saveSessionRecords(records);
+  }
   return records;
 }
 
@@ -97,7 +114,6 @@ async function removeSessionRecord(tabId) {
 function recordHasCustomState(record) {
   return Boolean(record && (
     record.customTitle
-    || record.customFavicon
     || record.autoRulePaused
   ));
 }
@@ -142,259 +158,25 @@ function executeInTab(tabId, func, args) {
   });
 }
 
-function readPageState(expectedTitle, expectedFaviconUrl) {
-  function isTabFaviconLink(link) {
-    const tokens = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).filter(Boolean);
-    return tokens.includes("icon");
-  }
-
-  function getFaviconLinks() {
-    if (!document.head) {
-      return [];
-    }
-    return Array.from(document.head.querySelectorAll("link[rel]")).filter(isTabFaviconLink);
-  }
-
-  function serializeIcon(link) {
-    if (!link) {
-      return null;
-    }
-    return {
-      href: link.href || link.getAttribute("href") || "",
-      rel: link.getAttribute("rel") || "icon",
-      type: link.getAttribute("type") || "",
-      sizes: link.getAttribute("sizes") || ""
-    };
-  }
-
-  const controller = globalThis.__tabLabelsController__;
+function readPageState() {
   const currentTitle = document.title || "";
-  const currentFavicon = getFaviconLinks().map(serializeIcon);
-  const isCurrentTitleManaged = controller && controller.active && controller.label === expectedTitle;
-  const isCurrentFaviconManaged = controller
-    && controller.active
-    && controller.customFaviconUrl
-    && controller.customFaviconUrl === expectedFaviconUrl;
-
   return {
     currentTitle,
-    websiteTitle: isCurrentTitleManaged
-      ? (controller.lastWebsiteTitle || controller.originalTitle || currentTitle)
-      : currentTitle,
-    originalFavicon: controller && controller.active && controller.originalFavicon
-      ? controller.originalFavicon
-      : currentFavicon,
-    currentFavicon,
-    faviconManaged: Boolean(isCurrentFaviconManaged)
+    websiteTitle: currentTitle
   };
 }
 
-function installTabController(label, originalTitle, originalFavicon, customFaviconUrl) {
-  function isTabFaviconLink(link) {
-    const tokens = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).filter(Boolean);
-    return tokens.includes("icon");
-  }
-
-  function getAllLinks() {
-    return document.head ? Array.from(document.head.querySelectorAll("link")) : [];
-  }
-
-  function getFaviconLinks() {
-    return getAllLinks().filter(isTabFaviconLink);
-  }
-
-  function getManagedLinks() {
-    return getAllLinks().filter((link) => link.getAttribute("data-tab-labels-managed") === "true");
-  }
-
-  function getDisabledLinks() {
-    return getAllLinks().filter((link) => link.getAttribute("data-tab-labels-disabled") === "true");
-  }
-
-  function serializeIcon(link) {
-    if (!link) {
-      return null;
-    }
-    return {
-      href: link.href || link.getAttribute("href") || "",
-      rel: link.getAttribute("rel") || "icon",
-      type: link.getAttribute("type") || "",
-      sizes: link.getAttribute("sizes") || ""
-    };
-  }
-
-  function normalizeSavedIcons(value) {
-    const values = Array.isArray(value) ? value : (value ? [value] : []);
-    return values.map((item) => {
-      const source = item && item.attributes && typeof item.attributes === "object"
-        ? item.attributes
-        : item;
-      if (!source || typeof source !== "object") {
-        return null;
-      }
-      return {
-        href: typeof source.href === "string" ? source.href : "",
-        rel: typeof source.rel === "string" && source.rel ? source.rel : "icon",
-        type: typeof source.type === "string" ? source.type : "",
-        sizes: typeof source.sizes === "string" ? source.sizes : ""
-      };
-    }).filter(Boolean);
-  }
-
-  function applyIconState(link, state) {
-    if (!link || !state) {
-      return;
-    }
-    link.setAttribute("rel", state.rel || "icon");
-    if (state.type) {
-      link.setAttribute("type", state.type);
-    } else {
-      link.removeAttribute("type");
-    }
-    if (state.sizes) {
-      link.setAttribute("sizes", state.sizes);
-    } else {
-      link.removeAttribute("sizes");
-    }
-    if (state.href) {
-      link.setAttribute("href", state.href);
-    } else {
-      link.removeAttribute("href");
-    }
-  }
-
-  function removeManagedMarkers(link) {
-    [
-      "data-tab-labels-managed",
-      "data-tab-labels-injected",
-      "data-tab-labels-disabled",
-      "data-tab-labels-original-rel",
-      "data-tab-labels-original-type",
-      "data-tab-labels-original-sizes",
-      "data-tab-labels-last-href",
-      "data-tab-labels-last-type",
-      "data-tab-labels-last-sizes",
-      "data-tab-labels-original-index"
-    ].forEach((attribute) => link.removeAttribute(attribute));
-  }
-
-  function rememberDisabledLink(link, originalIndex) {
-    if (!link) {
-      return;
-    }
-    if (link.getAttribute("data-tab-labels-disabled") === "true") {
-      const current = serializeIcon(link);
-      link.setAttribute("data-tab-labels-last-href", current.href || "");
-      link.setAttribute("data-tab-labels-last-type", current.type || "");
-      link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
-      link.setAttribute("rel", "tab-labels-disabled");
-      return;
-    }
-    const current = serializeIcon(link);
-    link.setAttribute("data-tab-labels-disabled", "true");
-    link.setAttribute("data-tab-labels-original-rel", current.rel || "icon");
-    link.setAttribute("data-tab-labels-original-type", current.type || "");
-    link.setAttribute("data-tab-labels-original-sizes", current.sizes || "");
-    link.setAttribute("data-tab-labels-last-href", current.href || "");
-    link.setAttribute("data-tab-labels-last-type", current.type || "");
-    link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
-    if (Number.isInteger(originalIndex)) {
-      link.setAttribute("data-tab-labels-original-index", String(originalIndex));
-    }
-    link.setAttribute("rel", "tab-labels-disabled");
-  }
-
-  function updateDisabledSnapshots() {
-    getDisabledLinks().forEach((link) => {
-      const current = serializeIcon(link);
-      if (current.href !== link.getAttribute("data-tab-labels-last-href")) {
-        link.setAttribute("data-tab-labels-last-href", current.href || "");
-      }
-      if (current.type !== link.getAttribute("data-tab-labels-last-type")) {
-        link.setAttribute("data-tab-labels-last-type", current.type || "");
-      }
-      if (current.sizes !== link.getAttribute("data-tab-labels-last-sizes")) {
-        link.setAttribute("data-tab-labels-last-sizes", current.sizes || "");
-      }
-    });
-  }
-
-  function restoreDisabledLink(link) {
-    const state = {
-      href: link.getAttribute("data-tab-labels-last-href") || "",
-      rel: link.getAttribute("data-tab-labels-original-rel") || "icon",
-      type: link.getAttribute("data-tab-labels-last-type") || "",
-      sizes: link.getAttribute("data-tab-labels-last-sizes") || ""
-    };
-    applyIconState(link, state);
-    const originalIndex = link.getAttribute("data-tab-labels-original-index");
-    removeManagedMarkers(link);
-    return originalIndex === null ? null : Number(originalIndex);
-  }
-
-  function createRestoredLink(state) {
-    const link = document.createElement("link");
-    applyIconState(link, state);
-    document.head.appendChild(link);
-    return link;
-  }
-
-  function ensureManagedFavicon(controller) {
-    if (!controller.active || !controller.customFaviconUrl || !document.head) {
-      return;
-    }
-
-    updateDisabledSnapshots();
-    getFaviconLinks().filter((link) => link.getAttribute("data-tab-labels-managed") !== "true")
-      .forEach((link) => rememberDisabledLink(
-        link,
-        originalIconIndexes.has(link) ? originalIconIndexes.get(link) : null
-      ));
-
-    let managedLinks = getManagedLinks();
-    let managedLink = managedLinks[0];
-    managedLinks.slice(1).forEach((link) => link.remove());
-    if (!managedLink) {
-      managedLink = document.createElement("link");
-      managedLink.setAttribute("data-tab-labels-injected", "true");
-      document.head.appendChild(managedLink);
-    }
-    managedLink.setAttribute("data-tab-labels-managed", "true");
-    managedLink.setAttribute("rel", "icon");
-    managedLink.setAttribute("type", "image/png");
-    managedLink.setAttribute("sizes", "32x32");
-    if (managedLink.getAttribute("href") !== controller.customFaviconUrl) {
-      managedLink.setAttribute("href", controller.customFaviconUrl);
-    }
-    if (document.head.lastElementChild !== managedLink) {
-      document.head.appendChild(managedLink);
-    }
-  }
-
-  const previous = globalThis.__tabLabelsController__;
+function installTitleController(label, originalTitle) {
+  const previous = globalThis.__tabLabelsTitleController__;
   if (previous && typeof previous.stop === "function") {
     previous.stop();
   }
 
-  const currentTitle = document.title || "";
-  const currentIcons = getFaviconLinks();
-  const capturedIcons = currentIcons.map(serializeIcon);
-  const originalIconIndexes = new Map(currentIcons.map((link, index) => [link, index]));
-  const savedIcons = normalizeSavedIcons(originalFavicon);
-  const initialOriginalFavicon = savedIcons.length ? savedIcons : capturedIcons;
-  const previousTitle = previous && previous.active ? previous.lastWebsiteTitle : "";
-  const previousFavicon = previous && previous.active ? previous.lastWebsiteFavicon : null;
   const controller = {
     active: true,
     label: label || "",
-    originalTitle: originalTitle || currentTitle,
-    originalFavicon: initialOriginalFavicon,
-    customFaviconUrl: customFaviconUrl || "",
-    lastWebsiteTitle: previousTitle || (currentTitle !== label ? currentTitle : (originalTitle || "")),
-    lastWebsiteFavicon: previousFavicon || initialOriginalFavicon,
+    originalTitle: originalTitle || document.title || "",
     observer: null,
-    applying: false,
-    pending: false,
     stop() {
       this.active = false;
       if (this.observer) {
@@ -402,35 +184,11 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
       }
     },
     restoreTitle(fallbackTitle) {
-      const restoredTitle = this.lastWebsiteTitle && this.lastWebsiteTitle !== this.label
-        ? this.lastWebsiteTitle
-        : (fallbackTitle || this.originalTitle);
+      const restoredTitle = fallbackTitle || this.originalTitle;
       if (restoredTitle) {
         document.title = restoredTitle;
       }
       this.label = "";
-    },
-    restoreFavicon() {
-      if (!document.head) {
-        this.customFaviconUrl = "";
-        return;
-      }
-      this.customFaviconUrl = "";
-      this.applying = true;
-      const restoredIndexes = new Set();
-      getManagedLinks().forEach((link) => link.remove());
-      getDisabledLinks().forEach((link) => {
-        const index = restoreDisabledLink(link);
-        if (index !== null && Number.isInteger(index)) {
-          restoredIndexes.add(index);
-        }
-      });
-      normalizeSavedIcons(this.originalFavicon).forEach((state, index) => {
-        if (!restoredIndexes.has(index)) {
-          createRestoredLink(state);
-        }
-      });
-      this.applying = false;
     }
   };
 
@@ -438,61 +196,33 @@ function installTabController(label, originalTitle, originalFavicon, customFavic
     if (!controller.active || !controller.label) {
       return;
     }
-    const pageTitle = document.title || "";
-    if (pageTitle && pageTitle !== controller.label) {
-      controller.lastWebsiteTitle = pageTitle;
-    }
     if (document.title !== controller.label) {
       document.title = controller.label;
     }
   }
 
-  function applyAll() {
-    if (!controller.active || controller.applying) {
-      return;
-    }
-    controller.applying = true;
-    applyTitle();
-    ensureManagedFavicon(controller);
-    controller.applying = false;
-  }
-
-  const observer = new MutationObserver(() => {
-    if (!controller.active || controller.pending) {
-      return;
-    }
-    controller.pending = true;
-    const rerun = () => {
-      controller.pending = false;
-      applyAll();
-    };
-    if (typeof queueMicrotask === "function") {
-      queueMicrotask(rerun);
-    } else {
-      Promise.resolve().then(rerun);
-    }
-  });
-  controller.observer = observer;
-  globalThis.__tabLabelsController__ = controller;
-
-  if (document.head) {
-    observer.observe(document.head, {
+  const titleElement = document.querySelector("title");
+  if (titleElement) {
+    const observer = new MutationObserver(() => {
+      if (controller.active) {
+        applyTitle();
+      }
+    });
+    controller.observer = observer;
+    observer.observe(titleElement, {
       childList: true,
       characterData: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["href", "rel", "type", "sizes"]
+      subtree: true
     });
   }
-  applyAll();
-  return {
-    currentTitle: document.title || "",
-    currentFavicon: getFaviconLinks().map(serializeIcon)
-  };
+
+  globalThis.__tabLabelsTitleController__ = controller;
+  applyTitle();
+  return { currentTitle: document.title || "" };
 }
 
 function disableTitleInController(fallbackTitle) {
-  const controller = globalThis.__tabLabelsController__;
+  const controller = globalThis.__tabLabelsTitleController__;
   if (!controller || !controller.active) {
     if (fallbackTitle) {
       document.title = fallbackTitle;
@@ -500,49 +230,17 @@ function disableTitleInController(fallbackTitle) {
     return { currentTitle: document.title || "" };
   }
   controller.restoreTitle(fallbackTitle);
-  if (!controller.customFaviconUrl) {
-    controller.stop();
-    delete globalThis.__tabLabelsController__;
-  }
+  controller.stop();
+  delete globalThis.__tabLabelsTitleController__;
   return { currentTitle: document.title || "" };
 }
 
-function disableFaviconInController() {
-  const controller = globalThis.__tabLabelsController__;
-  if (!controller || !controller.active) {
-    return { currentFavicon: null };
-  }
-  controller.restoreFavicon();
-  if (!controller.label) {
-    controller.stop();
-    delete globalThis.__tabLabelsController__;
-  }
-  const icon = document.head
-    ? Array.from(document.head.querySelectorAll("link[rel]")).find((link) => (
-      (link.getAttribute("rel") || "").toLowerCase().split(/\s+/).includes("icon")
-    ))
-    : null;
-  return {
-    currentFavicon: icon
-      ? {
-        href: icon.href || icon.getAttribute("href") || "",
-        rel: icon.getAttribute("rel") || "icon"
-      }
-      : null
-  };
-}
-
 function restoreEverythingInController(label, fallbackTitle) {
-  const controller = globalThis.__tabLabelsController__;
+  const controller = globalThis.__tabLabelsTitleController__;
   if (controller && controller.active) {
-    if (controller.label) {
-      controller.restoreTitle(fallbackTitle);
-    }
-    if (controller.customFaviconUrl) {
-      controller.restoreFavicon();
-    }
+    controller.restoreTitle(fallbackTitle);
     controller.stop();
-    delete globalThis.__tabLabelsController__;
+    delete globalThis.__tabLabelsTitleController__;
   } else if (fallbackTitle && document.title === label) {
     document.title = fallbackTitle;
   }
@@ -550,60 +248,48 @@ function restoreEverythingInController(label, fallbackTitle) {
 }
 
 async function readTabPageState(tab, previous) {
-  const faviconUrl = previous && previous.customFavicon
-    ? faviconDataUrl(previous.customFavicon)
-    : "";
   try {
-    const results = await executeInTab(tab.id, readPageState, [
-      previous ? previous.customTitle : "",
-      faviconUrl
-    ]);
+    const results = await executeInTab(tab.id, readPageState, []);
     return results[0] && results[0].result
       ? results[0].result
-      : { websiteTitle: tab.title || "", originalFavicon: null };
+      : { websiteTitle: tab.title || "" };
   } catch {
     throw new Error(unsupportedMessage());
   }
 }
 
 function makeRecord(tab, previous, pageState, values) {
-  const samePage = previous && (!previous.pageUrl || previous.pageUrl === tab.url);
   const customTitle = normalizeLabel(values.customTitle !== undefined
     ? values.customTitle
     : (previous ? previous.customTitle : ""));
-  const customFavicon = values.customFavicon !== undefined
-    ? normalizeFaviconConfig(values.customFavicon)
-    : (previous ? previous.customFavicon : null);
-
   return {
     ...(previous || {}),
     tabId: tab.id,
     customTitle,
     label: customTitle,
-    originalTitle: samePage && previous && previous.originalTitle
+    originalTitle: previous && previous.originalTitle
       ? previous.originalTitle
       : (pageState.websiteTitle || tab.title || ""),
-    originalFavicon: samePage && previous && previous.originalFavicon
-      ? previous.originalFavicon
-      : (pageState.originalFavicon || null),
-    customFavicon,
+    originalFavicon: null,
+    customFavicon: null,
     autoRulePaused: previous ? previous.autoRulePaused === true : false,
     source: values.source || (previous ? previous.source : "manual"),
     autoRuleId: values.autoRuleId !== undefined ? values.autoRuleId : (previous ? previous.autoRuleId || "" : ""),
     pageUrl: tab.url || "",
     injected: {
       title: Boolean(customTitle),
-      favicon: Boolean(customFavicon)
+      favicon: false
     }
   };
 }
 
 async function installRecord(tab, record) {
-  await executeInTab(tab.id, installTabController, [
+  if (!record || !record.customTitle) {
+    return;
+  }
+  await executeInTab(tab.id, installTitleController, [
     record.customTitle || "",
-    record.originalTitle || "",
-    record.originalFavicon || null,
-    record.customFavicon ? faviconDataUrl(record.customFavicon) : ""
+    record.originalTitle || ""
   ]);
 }
 
@@ -660,7 +346,7 @@ async function getActiveState() {
     };
   }
 
-  if (record && (record.customTitle || record.customFavicon)) {
+  if (record && record.customTitle) {
     try {
       const pageState = await readTabPageState(tab, record);
       websiteTitle = pageState.websiteTitle || websiteTitle;
@@ -756,44 +442,6 @@ async function saveLabel(label, allowExcluded) {
   };
 }
 
-async function applyFavicon(config, allowExcluded) {
-  const favicon = normalizeFaviconConfig(config);
-  if (!favicon) {
-    return { ok: false, message: "請輸入 1–2 個字元後再產生 favicon。" };
-  }
-
-  const tab = await getActiveTab();
-  if (!tab || typeof tab.id !== "number") {
-    return { ok: false, message: "無法取得目前分頁。" };
-  }
-  if (!isScriptableUrl(tab.url)) {
-    return { ok: false, message: unsupportedMessage() };
-  }
-
-  const settings = await getSettings();
-  const excluded = isExcludedUrl(tab.url, settings.excludedOrigins);
-  if (excluded && !allowExcluded) {
-    return { ok: false, excluded: true, message: excludedMessage(normalizeOrigin(tab.url)) };
-  }
-
-  const records = await getSessionRecords();
-  const previous = records[String(tab.id)] || null;
-  const pageState = await readTabPageState(tab, previous);
-  const record = makeRecord(tab, previous, pageState, {
-    customFavicon: favicon,
-    source: previous && previous.source === "auto" ? "auto" : "manual"
-  });
-
-  try {
-    await saveSessionRecord(tab.id, record);
-    await installRecord(tab, record);
-  } catch {
-    return { ok: false, message: unsupportedMessage() };
-  }
-
-  return { ok: true, record, faviconUrl: faviconDataUrl(favicon) };
-}
-
 async function restoreTitle(tabId) {
   const tab = await getTab(tabId);
   if (!tab || !isScriptableUrl(tab.url)) {
@@ -808,7 +456,7 @@ async function restoreTitle(tabId) {
 
   const next = { ...previous, customTitle: "", label: "", injected: { ...previous.injected, title: false } };
   delete next.autoRuleId;
-  if (next.customFavicon || next.autoRulePaused) {
+  if (next.autoRulePaused) {
     await saveSessionRecord(tab.id, next);
   } else {
     delete records[key];
@@ -832,34 +480,6 @@ async function restoreTitle(tabId) {
   }
 }
 
-async function restoreFavicon(tabId) {
-  const tab = await getTab(tabId);
-  if (!tab || !isScriptableUrl(tab.url)) {
-    return { ok: false, message: unsupportedMessage() };
-  }
-  const records = await getSessionRecords();
-  const key = String(tab.id);
-  const previous = records[key];
-  if (!previous || !previous.customFavicon) {
-    return { ok: false, message: "目前沒有自訂 favicon 可恢復。" };
-  }
-
-  const next = { ...previous, customFavicon: null, injected: { ...previous.injected, favicon: false } };
-  if (next.customTitle || next.autoRulePaused) {
-    await saveSessionRecord(tab.id, next);
-  } else {
-    delete records[key];
-    await saveSessionRecords(records);
-  }
-
-  try {
-    await executeInTab(tab.id, disableFaviconInController, []);
-    return { ok: true };
-  } catch {
-    return { ok: false, message: unsupportedMessage() };
-  }
-}
-
 async function restoreEverything(tabId) {
   const tab = await getTab(tabId);
   if (!tab || !isScriptableUrl(tab.url)) {
@@ -868,12 +488,12 @@ async function restoreEverything(tabId) {
   const records = await getSessionRecords();
   const key = String(tab.id);
   const previous = records[key];
-  if (!previous || (!previous.customTitle && !previous.customFavicon)) {
-    return { ok: false, message: "目前沒有自訂名稱或 favicon 可恢復。" };
+  if (!previous || !previous.customTitle) {
+    return { ok: false, message: "目前沒有自訂名稱可恢復。" };
   }
 
   if (previous.autoRulePaused) {
-    records[key] = { ...previous, customTitle: "", label: "", customFavicon: null, injected: { title: false, favicon: false } };
+    records[key] = { ...previous, customTitle: "", label: "", injected: { title: false, favicon: false } };
     await saveSessionRecords(records);
   } else {
     delete records[key];
@@ -894,7 +514,7 @@ async function restoreEverything(tabId) {
   }
 }
 
-async function saveFavorite(label, favicon) {
+async function saveFavorite(label) {
   const normalized = normalizeLabel(label);
   if (!normalized) {
     return { ok: false, message: "請先設定名稱，再加入收藏。" };
@@ -905,7 +525,7 @@ async function saveFavorite(label, favicon) {
   const favorite = {
     id: existingIndex >= 0 ? settings.favorites[existingIndex].id : "favorite-" + Date.now(),
     label: normalized,
-    favicon: normalizeFaviconConfig(favicon),
+    favicon: existingIndex >= 0 ? settings.favorites[existingIndex].favicon || null : null,
     createdAt: existingIndex >= 0 ? settings.favorites[existingIndex].createdAt : now,
     updatedAt: now
   };
@@ -939,9 +559,6 @@ async function updateFavorite(id, changes) {
   settings.favorites[index] = {
     ...settings.favorites[index],
     label: nextLabel,
-    favicon: changes && changes.favicon !== undefined
-      ? normalizeFaviconConfig(changes.favicon)
-      : settings.favorites[index].favicon,
     updatedAt: new Date().toISOString()
   };
   await saveSettings(settings);
@@ -981,7 +598,7 @@ function rulePatternForTab(url, matchType) {
   }
 }
 
-async function createRule(tabUrl, matchType, label, favicon) {
+async function createRule(tabUrl, matchType, label) {
   const tab = await getActiveTab();
   const url = tabUrl || (tab && tab.url);
   const normalizedLabel = normalizeLabel(label);
@@ -1012,7 +629,7 @@ async function createRule(tabUrl, matchType, label, favicon) {
     pattern,
     matchType,
     label: normalizedLabel,
-    favicon: normalizeFaviconConfig(favicon),
+    favicon: null,
     enabled: true,
     createdAt: now,
     updatedAt: now
@@ -1043,11 +660,9 @@ async function updateRule(id, changes) {
   const pattern = changes && changes.pattern !== undefined ? String(changes.pattern).trim() : current.pattern;
   const next = {
     ...current,
-    ...changes,
     matchType,
     pattern,
     label: normalizeLabel(changes && changes.label !== undefined ? changes.label : current.label),
-    favicon: changes && changes.favicon !== undefined ? normalizeFaviconConfig(changes.favicon) : current.favicon,
     enabled: changes && changes.enabled !== undefined ? changes.enabled !== false : current.enabled,
     updatedAt: new Date().toISOString()
   };
@@ -1107,12 +722,9 @@ async function getNamedTabs() {
       tabId: tab.id,
       windowId: tab.windowId,
       active: Boolean(tab.active),
-      title: record.customTitle || "（僅自訂 favicon）",
+      title: record.customTitle || "未設定名稱",
       hostname,
-      faviconUrl: record.customFavicon
-        ? faviconDataUrl(record.customFavicon)
-        : (tab.favIconUrl || ""),
-      customFavicon: record.customFavicon,
+      faviconUrl: tab.favIconUrl || "",
       canEdit: isScriptableUrl(tab.url),
       paused: record.autoRulePaused === true
     });
@@ -1187,7 +799,6 @@ async function applyAutomaticRuleToTab(tabId, force = false) {
   const sameRulePage = previous && previous.source === "auto" && previous.pageUrl === tab.url;
   const record = makeRecord(tab, sameRulePage ? previous : null, pageState, {
     customTitle: rule.label,
-    customFavicon: rule.favicon,
     source: "auto",
     autoRuleId: rule.id
   });
@@ -1210,7 +821,6 @@ async function restoreSessionRecordAfterLoad(tab, record) {
       const pageState = await readTabPageState(tab, record);
       next = makeRecord(tab, record, pageState, {
         customTitle: record.customTitle,
-        customFavicon: record.customFavicon,
         source: record.source,
         autoRuleId: record.autoRuleId || ""
       });
@@ -1346,16 +956,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     operation = getActiveState();
   } else if (type === "save-label") {
     operation = saveLabel(message.label, message.allowExcluded === true);
-  } else if (type === "apply-favicon") {
-    operation = applyFavicon(message.config, message.allowExcluded === true);
   } else if (type === "restore-label") {
     operation = restoreTitle(typeof message.tabId === "number" ? message.tabId : undefined);
-  } else if (type === "restore-favicon") {
-    operation = restoreFavicon(typeof message.tabId === "number" ? message.tabId : undefined);
   } else if (type === "restore-everything") {
     operation = restoreEverything(typeof message.tabId === "number" ? message.tabId : undefined);
   } else if (type === "save-favorite") {
-    operation = saveFavorite(message.label, message.favicon);
+    operation = saveFavorite(message.label);
   } else if (type === "update-favorite") {
     operation = updateFavorite(message.id, message.changes);
   } else if (type === "move-favorite") {
@@ -1367,7 +973,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (type === "save-settings") {
     operation = saveSettings(message.settings).then((settings) => ({ ok: true, settings }));
   } else if (type === "create-rule") {
-    operation = createRule(message.tabUrl, message.matchType, message.label, message.favicon);
+    operation = createRule(message.tabUrl, message.matchType, message.label);
   } else if (type === "update-rule") {
     operation = updateRule(message.id, message.changes);
   } else if (type === "delete-rule") {

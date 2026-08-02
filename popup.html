@@ -83,38 +83,9 @@
       <section class="panel compact-panel" aria-labelledby="favicon-heading">
         <div class="section-heading">
           <h2 id="favicon-heading">自訂 favicon</h2>
-          <span class="tab-scope">本機產生</span>
+          <span class="tab-scope">暫時停用</span>
         </div>
-        <div class="favicon-editor">
-          <div class="favicon-preview-wrap">
-            <img id="favicon-preview" class="favicon-preview" alt="" hidden>
-            <span id="favicon-preview-empty" class="favicon-preview-empty" aria-hidden="true">TL</span>
-          </div>
-          <div class="favicon-fields">
-            <label for="favicon-text">文字（1–2 個字元）</label>
-            <input id="favicon-text" type="text" maxlength="2" autocomplete="off" placeholder="TL">
-            <div class="color-row">
-              <label for="favicon-background">背景</label>
-              <input id="favicon-background" type="color" value="#4359d8">
-              <label for="favicon-foreground">文字</label>
-              <input id="favicon-foreground" type="color" value="#ffffff">
-            </div>
-            <label class="check-row">
-              <input type="checkbox" id="favicon-auto-contrast" checked>
-              <span>自動選擇高對比文字色</span>
-            </label>
-            <label for="favicon-shape">形狀</label>
-            <select id="favicon-shape">
-              <option value="rounded">圓角方形</option>
-              <option value="circle">圓形</option>
-            </select>
-          </div>
-        </div>
-        <div class="actions">
-          <button type="button" class="button button-primary" id="apply-favicon">套用 favicon</button>
-          <button type="button" class="button button-secondary" id="restore-favicon">恢復原始 favicon</button>
-        </div>
-        <p class="input-hint">只操作 favicon link，不讀取網頁正文或表單。</p>
+        <p class="input-hint">自訂 favicon 暫時停用，正在改善相容性。此版本不會修改網頁的 favicon，也不會在頁面載入後維持 favicon。</p>
       </section>
 
       <section class="panel compact-panel" aria-labelledby="rules-heading">
@@ -138,7 +109,7 @@
         <button type="button" class="nav-button" id="open-options">設定與匯入匯出</button>
       </nav>
 
-      <footer class="app-footer">名稱與 favicon 只套用於目前這個分頁</footer>
+      <footer class="app-footer">名稱只套用於目前這個分頁</footer>
     </main>
 
     <script src="core.js"></script>

@@ -35,6 +35,7 @@ exists(manifest.options_ui && manifest.options_ui.page);
 const allSource = sourceFiles
   .map((file) => fs.readFileSync(path.join(root, file), "utf8"))
   .join("\n");
+const workerSource = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
 
 if (manifest.permissions && manifest.permissions.includes("<all_urls>")) {
   errors.push("manifest contains <all_urls>");
@@ -56,6 +57,12 @@ if (/\/Users\/|\/home\/|file:\/\//.test(allSource)) {
 }
 if (fs.existsSync(path.join(root, ".DS_Store"))) {
   errors.push("root contains .DS_Store");
+}
+if (/data-tab-labels-managed|__tabLabelsController__|observer\.observe\(document\.head|setInterval\s*\(|setTimeout\s*\(/.test(workerSource)) {
+  errors.push("service worker contains unsafe favicon/head observer or polling runtime");
+}
+if (/apply-favicon|restore-favicon/.test(workerSource)) {
+  errors.push("service worker exposes disabled favicon runtime messages");
 }
 
 if (errors.length) {

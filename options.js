@@ -44,66 +44,6 @@ function makeButton(text, className, onClick) {
   return button;
 }
 
-function createFaviconEditor(config) {
-  const normalized = core.normalizeFaviconConfig(config) || {
-    text: "",
-    background: "#4359d8",
-    foreground: "auto",
-    shape: "rounded"
-  };
-  const wrapper = document.createElement("div");
-  wrapper.className = "favicon-editor";
-  const text = document.createElement("input");
-  text.type = "text";
-  text.maxLength = 2;
-  text.value = normalized.text;
-  text.setAttribute("aria-label", "favicon 文字");
-  const background = document.createElement("input");
-  background.type = "color";
-  background.value = normalized.background;
-  background.setAttribute("aria-label", "favicon 背景色");
-  const foreground = document.createElement("input");
-  foreground.type = "color";
-  foreground.value = normalized.foreground === "auto" ? "#ffffff" : normalized.foreground;
-  foreground.setAttribute("aria-label", "favicon 文字色");
-  const auto = document.createElement("input");
-  auto.type = "checkbox";
-  auto.checked = normalized.foreground === "auto";
-  auto.setAttribute("aria-label", "favicon 自動高對比文字色");
-  const autoLabel = document.createElement("label");
-  autoLabel.append(auto, document.createTextNode("自動文字色"));
-  const shape = document.createElement("select");
-  shape.setAttribute("aria-label", "favicon 形狀");
-  [["rounded", "圓角"], ["circle", "圓形"]].forEach(([value, label]) => {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    shape.append(option);
-  });
-  shape.value = normalized.shape;
-  [
-    document.createTextNode("文字"), text,
-    document.createTextNode("背景"), background,
-    document.createTextNode("文字色"), foreground,
-    autoLabel,
-    document.createTextNode("形狀"), shape
-  ].forEach((child) => wrapper.append(child));
-  return {
-    element: wrapper,
-    getConfig() {
-      if (!text.value.trim()) {
-        return null;
-      }
-      return core.normalizeFaviconConfig({
-        text: text.value,
-        background: background.value,
-        foreground: auto.checked ? "auto" : foreground.value,
-        shape: shape.value
-      });
-    }
-  };
-}
-
 function renderSummary() {
   const values = [
     ["收藏名稱", settings.favorites.length],
@@ -175,17 +115,16 @@ function renderFavorites() {
       makeButton("下移", "button button-secondary", () => void moveFavorite(favorite.id, "down"))
     );
     header.append(title, actions);
-    const editor = createFaviconEditor(favorite.favicon);
     const footer = document.createElement("div");
     footer.className = "rule-footer";
     const note = document.createElement("span");
     note.className = "muted";
-    note.textContent = "favicon 可與收藏名稱一起填入 popup。";
+    note.textContent = "自訂 favicon 暫時停用；收藏名稱仍會保留。";
     const footerActions = document.createElement("div");
     footerActions.className = "button-row";
     footerActions.append(
       makeButton("儲存", "button button-primary", () => {
-        void saveSettingsForFavorite(favorite.id, input.value, editor.getConfig());
+        void saveSettingsForFavorite(favorite.id, input.value);
       }),
       makeButton("刪除", "button button-danger", () => {
         if (window.confirm("確定刪除這個收藏名稱嗎？")) {
@@ -194,7 +133,7 @@ function renderFavorites() {
       })
     );
     footer.append(note, footerActions);
-    card.append(header, editor.element, footer);
+    card.append(header, footer);
     elements.favorites.append(card);
     if (index === 0) {
       actions.querySelector("button").disabled = true;
@@ -205,9 +144,9 @@ function renderFavorites() {
   });
 }
 
-async function saveSettingsForFavorite(id, label, favicon) {
+async function saveSettingsForFavorite(id, label) {
   try {
-    const result = await sendMessage("update-favorite", { id, changes: { label, favicon } });
+    const result = await sendMessage("update-favorite", { id, changes: { label } });
     if (!result || !result.ok) {
       throw new Error(result && result.message ? result.message : "收藏儲存失敗。");
     }
@@ -330,7 +269,9 @@ function renderRules() {
     pattern.value = rule.pattern;
     patternWrap.append(pattern);
     fields.append(labelWrap, typeWrap, patternWrap);
-    const editor = createFaviconEditor(rule.favicon);
+    const faviconNote = document.createElement("p");
+    faviconNote.className = "section-note";
+    faviconNote.textContent = "自訂 favicon 暫時停用；既有設定會保留在資料中，但不會套用到網頁。";
     const conflict = document.createElement("p");
     conflict.className = "rule-conflict";
     conflict.textContent = ruleConflictText(rule);
@@ -348,12 +289,11 @@ function renderRules() {
         label: labelInput.value,
         matchType: type.value,
         pattern: pattern.value,
-        enabled: enabled.checked,
-        favicon: editor.getConfig()
+        enabled: enabled.checked
       });
     });
     footer.append(saveButton);
-    card.append(header, fields, editor.element, conflict, footer);
+    card.append(header, fields, faviconNote, conflict, footer);
     elements.rules.append(card);
     void rulePermission(rule).then((permission) => {
       permissionText.className = permission.granted ? "permission-ok" : "permission-needed";

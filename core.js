@@ -700,7 +700,7 @@
       return "evaluate-auto";
     }
 
-    const hasPresentation = Boolean(record.customTitle || record.customFavicon);
+    const hasPresentation = Boolean(record.customTitle);
     if (record.autoRulePaused) {
       return hasPresentation ? "restore-session" : "paused";
     }
@@ -793,7 +793,7 @@
   }
 
   function isNamedRecord(record) {
-    return Boolean(record && (record.customTitle || record.label || record.customFavicon));
+    return Boolean(record && (record.customTitle || record.label));
   }
 
   const api = {
