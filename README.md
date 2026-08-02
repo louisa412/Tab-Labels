@@ -15,6 +15,16 @@ Tab Labels 是一個小型 Chrome Extension，讓你替目前作用中的 Chrome
 - `Command+Shift+L`（macOS）或 `Ctrl+Shift+L`（Windows/Linux）可開啟 popup。
 - 支援淺色與深色系統模式、鍵盤操作、focus 狀態與受保護頁面的清楚錯誤提示。
 
+## 更換工具列 icon
+
+Manifest 已固定引用 `icons/icon.png`。要更換圖示時：
+
+1. 用新的正方形 PNG 覆蓋 `icons/icon.png`。
+2. 回到 `chrome://extensions`。
+3. 在 Tab Labels 卡片上點擊「重新載入」。
+
+不需要修改 `manifest.json`。建議新圖檔至少為 128×128px、PNG 格式、透明背景；Chrome 會依工具列與 Extension 管理頁的尺寸縮放同一張圖。Chrome 的 Extension icon 不支援 SVG，因此請使用 PNG。
+
 ## 安裝方式
 
 1. 打開 `chrome://extensions`。
